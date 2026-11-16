@@ -1,0 +1,14 @@
+/out/*
+!/out/bin/
+/out/bin/*
+!/out/bin/README.md
+CMakeUserPresets.json
+*.user
+/build/
+/obj/
+/moc/
+/rcc/
+/ui/
+Makefile*
+.qmake.stash
+.qmake.cache

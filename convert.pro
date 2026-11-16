@@ -1,0 +1,44 @@
+QT += core gui widgets
+
+TEMPLATE = app
+TARGET = convert
+VERSION = 0.1.0
+
+CONFIG += c++17 warn_on
+CONFIG -= debug_and_release console app_bundle
+
+!versionAtLeast(QT_VERSION, 6.7.0) {
+    error("Convert requiere Qt 6.7 o posterior.")
+}
+
+SOURCES += \
+    svn/main.cpp \
+    svn/mainwindow.cpp \
+    svn/jobs.cpp \
+    svn/runner.cpp
+SOURCES += svn/aboutdialog.cpp
+
+HEADERS += \
+    svn/mainwindow.h \
+    svn/jobs.h \
+    svn/runner.h
+HEADERS += svn/aboutdialog.h
+
+RESOURCES += svn/resources.qrc
+
+DESTDIR = "$$PWD/out/bin"
+OBJECTS_DIR = "$$OUT_PWD/obj"
+MOC_DIR = "$$OUT_PWD/moc"
+RCC_DIR = "$$OUT_PWD/rcc"
+UI_DIR = "$$OUT_PWD/ui"
+
+win32-g++ {
+    QMAKE_CXXFLAGS += -Wall -Wextra -Wpedantic
+}
+win32:RC_ICONS = svn/convert.ico
+
+DISTFILES += \
+    svn/convert.qss \
+    README.md \
+    build.ps1
+DISTFILES += svn/convert.svg svn/convert.png generate-icon.ps1 svn/convert.rc

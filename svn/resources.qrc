@@ -1,0 +1,8 @@
+<RCC>
+    <qresource prefix="/">
+        <file>convert.qss</file>
+        <file>convert.ico</file>
+        <file>convert.png</file>
+        <file>convert.svg</file>
+    </qresource>
+</RCC>
