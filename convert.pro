@@ -33,7 +33,7 @@ RCC_DIR = "$$OUT_PWD/rcc"
 UI_DIR = "$$OUT_PWD/ui"
 
 win32-g++ {
-    QMAKE_CXXFLAGS += -Wall -Wextra -Wpedantic
+    QMAKE_CXXFLAGS += -Wall -Wextra -Wpedantic -finput-charset=UTF-8 -fexec-charset=UTF-8
 }
 win32:RC_ICONS = svn/convert.ico
 win32:QMAKE_POST_LINK += powershell.exe -NoProfile -ExecutionPolicy Bypass -File $$shell_quote($$shell_path($$PWD/prepare-runtime.ps1)) -RuntimeDirectory $$shell_quote($$shell_path($$DESTDIR))

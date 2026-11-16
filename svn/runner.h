@@ -3,6 +3,7 @@
 #include <QProcess>
 #include <QTemporaryDir>
 #include <memory>
+#include <atomic>
 
 class Runner : public QObject {
     Q_OBJECT
@@ -26,7 +27,7 @@ private:
     void convertDownloadedAudio();
     void closeProcessTree();
     bool prepareProcessTemporaryDirectory();
-    bool publishDownloads(QString *error);
+    void publishDownloads();
     JobModel *m_model;
     QProcess *m_process = nullptr;
     int m_row = -1;
@@ -44,4 +45,5 @@ private:
     std::unique_ptr<QTemporaryDir> m_runtimeTemp;
     std::unique_ptr<QTemporaryDir> m_downloadTemp;
     void *m_processTree = nullptr;
+    std::shared_ptr<std::atomic_bool> m_copyCancelled;
 };

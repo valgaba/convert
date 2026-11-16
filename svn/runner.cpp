@@ -12,6 +12,7 @@
 #include <QTemporaryFile>
 #include <QTimer>
 #include <QSet>
+#include <QThread>
 #ifdef Q_OS_WIN
 #ifndef NOMINMAX
 #define NOMINMAX 1
@@ -22,6 +23,7 @@
 Runner::Runner(JobModel *model, QObject *parent) : QObject(parent), m_model(model) {}
 Runner::~Runner()
 {
+    if (m_copyCancelled) m_copyCancelled->store(true);
     closeProcessTree();
     if (m_process) {
         m_process->disconnect(this);
@@ -45,6 +47,7 @@ void Runner::cancel()
 {
     if (!m_busy) return;
     m_cancelled = true;
+    if (m_copyCancelled) m_copyCancelled->store(true);
     if (m_process) {
         closeProcessTree();
         m_process->kill();
@@ -151,12 +154,14 @@ void Runner::next()
     if (!prepareProcessTemporaryDirectory()) {
         complete(false, "No se puede preparar la carpeta temporal de descarga."); return;
     }
-    // Mismo volumen que la salida: el paso final es un renombrado, sin copiar
-    // vídeos grandes entre discos en el hilo de la interfaz.
-    // spotDL elimina puntos iniciales de los componentes de --output.
-    m_downloadTemp = std::make_unique<QTemporaryDir>(QDir(j.destination).filePath("convert-download-XXXXXX"));
+    // Work locally: SMB shares can permit files but deny mkdir or the private
+    // permissions requested by QTemporaryDir. Keep this folder separate from
+    // run-XXXXXX so failed downloads survive cleanup of the tool environment.
+    const QDir temporaryRoot(QFileInfo(m_runtimeTemp->path()).absolutePath());
+    m_downloadTemp = std::make_unique<QTemporaryDir>(temporaryRoot.filePath("convert-download-XXXXXX"));
     if (!m_downloadTemp->isValid()) {
-        complete(false, "No se puede crear la carpeta de trabajo de la descarga."); return;
+        complete(false, "No se puede crear la carpeta de trabajo de la descarga en "
+                 + QDir::toNativeSeparators(temporaryRoot.path()) + ": " + m_downloadTemp->errorString()); return;
     }
     const QString folder = m_downloadTemp->path();
     emit log("Carpeta de trabajo de descarga: " + QDir::toNativeSeparators(folder));
@@ -208,9 +213,7 @@ void Runner::convertDownloadedAudio()
     if (m_cancelled) { complete(false, "Cancelado por el usuario."); return; }
     auto &job = m_model->jobs[m_row];
     if (m_downloadIndex >= m_downloadFiles.size()) {
-        QString error;
-        if (!publishDownloads(&error)) { complete(false, error); return; }
-        complete(true, "Finalizado.");
+        publishDownloads();
         return;
     }
     const QFileInfo input(m_downloadFiles[m_downloadIndex]);
@@ -436,8 +439,8 @@ void Runner::execute(const QString &program, const QStringList &arguments, bool 
             if (!valid) {
                 complete(false, "No se han confirmado archivos de esta descarga en el formato solicitado."); return;
             }
-            QString error;
-            if (!publishDownloads(&error)) { complete(false, error); return; }
+            publishDownloads();
+            return;
         }
         if (success && j.kind == Source::File) {
             QFile staged(m_staged);
@@ -493,12 +496,22 @@ void Runner::consume(bool final)
     }
 }
 
-bool Runner::publishDownloads(QString *error)
+void Runner::publishDownloads()
 {
-    const auto &job = m_model->jobs[m_row];
-    const QDir destination(job.destination);
-    QStringList saved;
-    for (const auto &path : m_downloadFiles) {
+    struct CopyResult { QStringList saved; QString error; };
+    const auto result = std::make_shared<CopyResult>();
+    const auto cancelled = std::make_shared<std::atomic_bool>(m_cancelled);
+    m_copyCancelled = cancelled;
+    const auto job = m_model->jobs[m_row];
+    const auto files = m_downloadFiles;
+    emit log("Guardando descarga en: " + QDir::toNativeSeparators(job.destination));
+    m_model->jobs[m_row].progress = -1;
+    m_model->refresh(m_row);
+    // All network I/O runs off the UI thread; NewOnly never overwrites a file.
+    auto *thread = QThread::create([job, files, result, cancelled] {
+      const QDir destination(job.destination);
+      for (const auto &path : files) {
+        if (cancelled->load()) { result->error = "Cancelado por el usuario."; return; }
         QString name = QFileInfo(path).completeBaseName();
         if (job.kind == Source::Spotify)
             name.remove(QRegularExpression("^[A-Za-z0-9]{22} - "));
@@ -511,16 +524,57 @@ bool Runner::publishDownloads(QString *error)
         int suffix = 2;
         while (QFileInfo::exists(target))
             target = destination.filePath(name + " (" + QString::number(suffix++) + ")" + extension);
-        QFile file(path);
-        if (!file.rename(target)) {
-            *error = "No se pudo guardar " + QDir::toNativeSeparators(target) + ": " + file.errorString();
-            return false;
+        QFile source(path);
+        if (!source.open(QIODevice::ReadOnly)) {
+            result->error = "No se puede leer " + path + ": " + source.errorString(); return;
         }
-        saved << target;
-        emit log("Guardado: " + QDir::toNativeSeparators(target));
-    }
-    m_downloadFiles = saved;
-    return true;
+        QFile output(target);
+        while (!output.open(QIODevice::WriteOnly | QIODevice::NewOnly)) {
+            if (cancelled->load()) { result->error = "Cancelado por el usuario."; return; }
+            if (!QFileInfo::exists(target)) {
+                result->error = "No se pudo guardar " + QDir::toNativeSeparators(target)
+                              + ": " + output.errorString(); return;
+            }
+            target = destination.filePath(name + " (" + QString::number(suffix++) + ")" + extension);
+            output.setFileName(target);
+        }
+        QByteArray buffer(1024 * 1024, Qt::Uninitialized);
+        qint64 total = 0;
+        bool ok = true;
+        while (!cancelled->load()) {
+            const qint64 count = source.read(buffer.data(), buffer.size());
+            if (count < 0) { result->error = source.errorString(); ok = false; break; }
+            if (count == 0) break;
+            qint64 written = 0;
+            while (written < count) {
+                const qint64 amount = output.write(buffer.constData() + written, count - written);
+                if (amount <= 0) { result->error = output.errorString(); ok = false; break; }
+                written += amount;
+            }
+            if (!ok) break;
+            total += count;
+        }
+        if (ok && !output.flush()) { result->error = output.errorString(); ok = false; }
+        if (cancelled->load()) { result->error = "Cancelado por el usuario."; ok = false; }
+        if (ok && (total <= 0 || total != source.size() || output.size() != total)) {
+            result->error = "El archivo guardado tiene un tamaño incompleto."; ok = false;
+        }
+        output.close();
+        if (!ok) {
+            result->error = "No se pudo guardar " + QDir::toNativeSeparators(target) + ": " + result->error;
+            if (!output.remove()) result->error += "\nNo se pudo borrar el archivo incompleto: " + target;
+            return;
+        }
+        result->saved << target;
+      }
+    });
+    connect(thread, &QThread::finished, this, [this, result] {
+        m_copyCancelled.reset();
+        for (const auto &path : result->saved) emit log("Guardado: " + QDir::toNativeSeparators(path));
+        complete(result->error.isEmpty(), result->error.isEmpty() ? "Finalizado." : result->error);
+    });
+    connect(thread, &QThread::finished, thread, &QObject::deleteLater);
+    thread->start();
 }
 
 void Runner::complete(bool success, const QString &message)

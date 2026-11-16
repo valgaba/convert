@@ -188,11 +188,14 @@ los detalles de la versión que forman parte del título. Si el nombre ya existe
 se añade ` (2)`, ` (3)`, etc.; no se sobrescriben salidas anteriores.
 
 Para comprobar cada descarga sin confundir canciones con el mismo título, se
-descarga primero a una carpeta temporal de trabajo (`convert-download-XXXXXX`
-dentro del destino, para que el traslado final sea un renombrado en el mismo
-volumen). Los identificadores solo aparecen en esos nombres
-internos. Tras validar la salida se trasladan los archivos al destino con el
-nombre limpio. Si la descarga falla o se cancela, los archivos parciales se
+descarga primero a una carpeta temporal local de trabajo (`convert-download-XXXXXX`
+dentro del directorio temporal de herramientas). No se crean carpetas de trabajo
+en el servidor de salida. Los identificadores solo aparecen en esos nombres
+internos. Tras validar la salida se copian los archivos al destino con el
+nombre limpio, en segundo plano y sin sobrescribir archivos existentes. La copia
+puede cancelarse; si falla, el registro muestra la causa y se conserva la descarga
+local. Las copias terminadas permanecen en el destino; se intenta eliminar la
+copia incompleta. Si la descarga falla o se cancela, los archivos parciales se
 conservan en esa carpeta de trabajo y el registro muestra su ruta. Reintentar
 inicia una descarga nueva. No se renombran archivos ni se mueven las subcarpetas
 creadas por versiones anteriores. El progreso YouTube corresponde

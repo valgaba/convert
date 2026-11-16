@@ -48,11 +48,11 @@ QStringList audioArguments(const QString &format, AudioOptions options)
 QString audioDescription(const QString &format, AudioOptions options)
 {
     options = normalizedAudio(format, options);
-    return QString("%1 · %2 · %3")
+    return QStringLiteral("%1 · %2 · %3")
         .arg(format == "wav" || format == "flac" ? QString("%1 bits").arg(options.bitDepth)
                                                  : QString("%1 kb/s").arg(options.bitrate))
-        .arg(options.sampleRate ? QString("%1 Hz").arg(options.sampleRate) : "Muestreo automático")
-        .arg(options.channels == 1 ? "Mono" : options.channels == 2 ? "Estéreo" : "Canales originales");
+        .arg(options.sampleRate ? QString("%1 Hz").arg(options.sampleRate) : QStringLiteral("Muestreo automático"))
+        .arg(options.channels == 1 ? QStringLiteral("Mono") : options.channels == 2 ? QStringLiteral("Estéreo") : QStringLiteral("Canales originales"));
 }
 
 QString outputDirectory(const QString &text)
