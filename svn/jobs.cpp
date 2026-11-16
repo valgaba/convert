@@ -15,6 +15,46 @@ QStringList formats(bool audioOnly)
 
 bool isAudio(const QString &format) { return formats(true).contains(format); }
 
+AudioOptions normalizedAudio(const QString &format, AudioOptions options)
+{
+    if (!QList<int>{64, 96, 128, 160, 192, 224, 256, 320}.contains(options.bitrate)) options.bitrate = 192;
+    if (!QList<int>{0, 32000, 44100, 48000, 88200, 96000}.contains(options.sampleRate)) options.sampleRate = 0;
+    if (format == "opus") options.sampleRate = 48000;
+    else if (format == "mp3" && options.sampleRate > 48000) options.sampleRate = 48000;
+    if (options.channels < 0 || options.channels > 2) options.channels = 0;
+    if (!QList<int>{16, 24, 32}.contains(options.bitDepth)) options.bitDepth = 16;
+    if (format == "flac" && options.bitDepth == 32) options.bitDepth = 24;
+    return options;
+}
+
+QStringList audioArguments(const QString &format, AudioOptions options)
+{
+    options = normalizedAudio(format, options);
+    QStringList args;
+    if (format == "wav") args << "-c:a" << QString("pcm_s%1le").arg(options.bitDepth);
+    else if (format == "flac")
+        args << "-c:a" << "flac" << "-sample_fmt" << (options.bitDepth == 16 ? "s16" : "s32")
+             << "-bits_per_raw_sample" << QString::number(options.bitDepth);
+    else {
+        const QString codec = format == "mp3" ? "libmp3lame" : format == "m4a" ? "aac"
+                            : format == "opus" ? "libopus" : "libvorbis";
+        args << "-c:a" << codec << "-b:a" << QString::number(options.bitrate) + "k";
+    }
+    if (options.sampleRate) args << "-ar" << QString::number(options.sampleRate);
+    if (options.channels) args << "-ac" << QString::number(options.channels);
+    return args;
+}
+
+QString audioDescription(const QString &format, AudioOptions options)
+{
+    options = normalizedAudio(format, options);
+    return QString("%1 · %2 · %3")
+        .arg(format == "wav" || format == "flac" ? QString("%1 bits").arg(options.bitDepth)
+                                                 : QString("%1 kb/s").arg(options.bitrate))
+        .arg(options.sampleRate ? QString("%1 Hz").arg(options.sampleRate) : "Muestreo automático")
+        .arg(options.channels == 1 ? "Mono" : options.channels == 2 ? "Estéreo" : "Canales originales");
+}
+
 QString outputDirectory(const QString &text)
 {
     QString path = text.trimmed();
@@ -66,18 +106,14 @@ bool classifyUrl(const QString &text, Source *kind)
     return false;
 }
 
-QStringList conversionArguments(const QString &input, const QString &output, const QString &format)
+QStringList conversionArguments(const QString &input, const QString &output, const QString &format,
+                                AudioOptions options, bool overwriteReservedFile)
 {
-    QStringList args{"-hide_banner", "-nostdin", "-n", "-i", input,
+    QStringList args{"-hide_banner", "-nostdin", overwriteReservedFile ? "-y" : "-n", "-i", input,
                      "-progress", "pipe:1", "-nostats"};
     if (isAudio(format)) {
         args << "-map" << "0:a:0" << "-vn";
-        if (format == "mp3") args << "-c:a" << "libmp3lame" << "-b:a" << "192k";
-        else if (format == "wav") args << "-c:a" << "pcm_s16le";
-        else if (format == "flac") args << "-c:a" << "flac";
-        else if (format == "m4a") args << "-c:a" << "aac" << "-b:a" << "192k";
-        else if (format == "opus") args << "-c:a" << "libopus" << "-b:a" << "160k";
-        else args << "-c:a" << "libvorbis" << "-q:a" << "5";
+        args << audioArguments(format, options);
     } else {
         args << "-map" << "0:v:0" << "-map" << "0:a:0?";
         if (format == "webm")
@@ -105,18 +141,57 @@ QVariant JobModel::data(const QModelIndex &i, int role) const
 {
     if (!i.isValid() || i.row() >= jobs.size()) return {};
     const auto &j = jobs[i.row()];
+    if (role == Qt::UserRole) return int(j.kind);
+    if (role == Qt::EditRole && i.column() == 2) return j.format;
+    if (role == Qt::ToolTipRole && i.column() == 2)
+        return QString("Pulsa para elegir el formato de salida de esta entrada.")
+            + (isAudio(j.format) ? "\n" + audioDescription(j.format, j.audio)
+               + "\nBotón derecho → Opciones de audio…" : QString());
     if (role == Qt::ToolTipRole) return j.source + "\n" + j.detail + "\n" + j.result;
     if (role != Qt::DisplayRole) return {};
     switch (i.column()) {
     case 0: return j.kind == Source::File ? QFileInfo(j.source).fileName() : j.source;
     case 1: return QStringList{"Archivo", "YouTube", "Spotify"}.at(int(j.kind));
-    case 2: return j.format.toUpper();
+    case 2: return j.format.toUpper() + " ▾";
     case 3: return QStringList{"Pendiente", "Procesando", "Completado", "Error", "Cancelado"}.at(int(j.state));
     case 4: return j.state == State::Running && j.progress < 0 ? "En curso…" : QString::number(j.progress) + " %";
     case 5: return j.result.isEmpty() ? j.destination : j.result;
     }
     return {};
 }
+
+Qt::ItemFlags JobModel::flags(const QModelIndex &i) const
+{
+    auto result = QAbstractTableModel::flags(i);
+    if (i.isValid() && i.row() < jobs.size() && i.column() == 2 && !m_processing &&
+        jobs[i.row()].state != State::Running && jobs[i.row()].state != State::Done)
+        result |= Qt::ItemIsEditable;
+    return result;
+}
+
+bool JobModel::setData(const QModelIndex &i, const QVariant &value, int role)
+{
+    if (role != Qt::EditRole || !(flags(i) & Qt::ItemIsEditable)) return false;
+    auto &job = jobs[i.row()];
+    const auto format = value.toString().toLower();
+    if (!formats(job.kind == Source::Spotify).contains(format)) return false;
+    if (job.format == format) return true;
+    job.format = format;
+    job.state = State::Pending;
+    job.progress = 0;
+    job.detail.clear();
+    job.result.clear();
+    emit dataChanged(index(i.row(), 0), index(i.row(), 5),
+                     {Qt::DisplayRole, Qt::EditRole, Qt::ToolTipRole});
+    return true;
+}
+
+void JobModel::setProcessing(bool processing)
+{
+    m_processing = processing;
+    if (!jobs.isEmpty()) emit dataChanged(index(0, 2), index(jobs.size() - 1, 2));
+}
+
 void JobModel::append(const Job &j)
 {
     const int row = jobs.size();
@@ -125,5 +200,12 @@ void JobModel::append(const Job &j)
 void JobModel::remove(int row)
 {
     beginRemoveRows({}, row, row); jobs.removeAt(row); endRemoveRows();
+}
+void JobModel::clear()
+{
+    if (m_processing || jobs.isEmpty()) return;
+    beginRemoveRows({}, 0, jobs.size() - 1);
+    jobs.clear();
+    endRemoveRows();
 }
 void JobModel::refresh(int row) { emit dataChanged(index(row, 0), index(row, 5)); }

@@ -36,9 +36,11 @@ win32-g++ {
     QMAKE_CXXFLAGS += -Wall -Wextra -Wpedantic
 }
 win32:RC_ICONS = svn/convert.ico
+win32:QMAKE_POST_LINK += powershell.exe -NoProfile -ExecutionPolicy Bypass -File $$shell_quote($$shell_path($$PWD/prepare-runtime.ps1)) -RuntimeDirectory $$shell_quote($$shell_path($$DESTDIR))
 
 DISTFILES += \
     svn/convert.qss \
     README.md \
     build.ps1
 DISTFILES += svn/convert.svg svn/convert.png generate-icon.ps1 svn/convert.rc
+DISTFILES += prepare-runtime.ps1

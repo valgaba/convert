@@ -34,6 +34,7 @@ try {
     } finally {
         Pop-Location
     }
+    & (Join-Path $PSScriptRoot 'prepare-runtime.ps1') -RuntimeDirectory (Split-Path -Parent $executable)
     if ($Deploy) {
         if (-not (Test-Path -LiteralPath $deployTool -PathType Leaf)) { throw "Falta $deployTool" }
         & $deployTool --release --compiler-runtime --no-translations $executable

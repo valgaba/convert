@@ -28,7 +28,10 @@ protected:
 private:
     void addFiles(const QStringList &files);
     bool addUrl(const QString &url, QString *error);
-    void addFromField();
+    void pasteFromClipboard();
+    void updatePasteAction();
+    void changeSelectedDestination();
+    void changeSelectedAudio();
     void preferences();
     void setBusy(bool busy);
     void updateSummary();
@@ -40,12 +43,14 @@ private:
     Runner *m_runner;
     QTableView *m_table;
     QComboBox *m_format;
-    QLineEdit *m_destination, *m_url;
+    AudioOptions m_audio;
+    QLineEdit *m_destination;
     QPlainTextEdit *m_log;
     QLabel *m_summary;
+    QLabel *m_emptyHint = nullptr;
     QProgressBar *m_progress;
     QPushButton *m_start, *m_stop;
     QList<QWidget *> m_controls;
-    QAction *m_preferences;
+    QAction *m_preferences, *m_paste;
     bool m_closeAfterCancel = false;
 };

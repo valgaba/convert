@@ -4,6 +4,7 @@ QWidget { color: #dfdbd2; font-family: "Segoe UI"; font-size: 12px; }
 QMainWindow, QWidget#ConvertCentral, QDialog { background-color: #181e2c; }
 QLabel { background: transparent; border: none; }
 QLabel#title { color: #f4f4f7; font-size: 28px; font-weight: bold; letter-spacing: 3px; }
+QLabel#ListEmptyHint { color: #80A4AE; font-size: 16px; background: transparent; padding: 20px; }
 QFrame[panel="true"] { background-color: #181e2c; border: 1px solid #333b4f; }
 QLabel#PanelTitle {
     background-color: #4e4d7a; color: #dfdbd2;

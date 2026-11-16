@@ -13,6 +13,10 @@ if(WIN32)
     enable_language(RC)
     target_sources(convert PRIVATE svn/convert.rc)
     target_include_directories(convert PRIVATE "${CMAKE_SOURCE_DIR}/svn")
+    add_custom_command(TARGET convert POST_BUILD
+        COMMAND powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${CMAKE_SOURCE_DIR}/prepare-runtime.ps1"
+                -RuntimeDirectory "$<TARGET_FILE_DIR:convert>"
+        VERBATIM)
 endif()
 target_link_libraries(convert PRIVATE Qt6::Widgets)
 if(MINGW)
