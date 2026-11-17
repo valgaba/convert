@@ -1,3 +1,4 @@
+#include "i18n.h"
 #include "mainwindow.h"
 #include <QApplication>
 #include <QFile>
@@ -15,6 +16,7 @@ int main(int argc, char *argv[])
     app.setOrganizationName("RaditTools");
     app.setApplicationName("Convert");
     app.setApplicationVersion(QStringLiteral(CONVERT_VERSION));
+    i18n::initialize();
     app.setWindowIcon(QIcon(":/convert.png"));
     app.setStyle(QStyleFactory::create("Fusion"));
     QPalette palette;
@@ -46,7 +48,7 @@ int main(int argc, char *argv[])
     QElapsedTimer startup;
     startup.start();
     if (!artwork.isNull()) {
-        splash.setWindowTitle("Iniciando Convert");
+        splash.setWindowTitle(i18n::text("Iniciando Convert"));
         splash.setWindowIcon(app.windowIcon());
         splash.setCursor(Qt::WaitCursor);
         splash.show();

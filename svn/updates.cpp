@@ -1,3 +1,4 @@
+#include "i18n.h"
 #include "updates.h"
 #include "jobs.h"
 #include <QCheckBox>
@@ -94,7 +95,7 @@ UpdateManager::UpdateManager(std::function<bool()> queueBusy, QObject *parent)
     const auto add = [this](const QString &key, const QString &name, const QString &repository) {
         UpdateItem item;
         item.key = key; item.name = name; item.repository = repository;
-        item.status = QStringLiteral("Sin comprobar");
+        item.status = i18n::text("Sin comprobar");
         m_items << item;
     };
     add("convert", "Convert", "valgaba/convert");
@@ -124,8 +125,8 @@ void UpdateManager::checkAutomatically()
             if (result.open(QIODevice::ReadOnly)) {
                 const auto state = QJsonDocument::fromJson(result.readAll()).object();
                 const bool failed = state.value("status").toString() != "ok";
-                m_message = failed ? QStringLiteral("No se pudo actualizar Convert: ") + state.value("error").toString()
-                                   : QStringLiteral("Convert se ha actualizado a la versión %1.").arg(QCoreApplication::applicationVersion());
+                m_message = failed ? i18n::text("No se pudo actualizar Convert: ") + state.value("error").toString()
+                                   : i18n::text("Convert se ha actualizado a la versión %1.").arg(QCoreApplication::applicationVersion());
                 emit log(m_message); emit installationReport(m_message, failed); emit changed();
                 settings.remove("updates/pendingResult");
             }
@@ -141,7 +142,7 @@ void UpdateManager::check()
     if (m_busy) return;
     m_busy = true;
     m_progress = -1;
-    m_message = QStringLiteral("Comprobando versiones instaladas y publicaciones…");
+    m_message = i18n::text("Comprobando versiones instaladas y publicaciones…");
     QSettings().setValue("updates/lastCheck", QDateTime::currentDateTimeUtc());
     m_pending = int(m_items.size()) * 2;
     for (int row = 0; row < m_items.size(); ++row) {
@@ -149,7 +150,7 @@ void UpdateManager::check()
         item.installed.clear(); item.latest.clear(); item.digest.clear(); item.assetName.clear();
         item.download.clear(); item.release.clear(); item.localError.clear(); item.remoteError.clear();
         item.missing = item.available = false;
-        item.status = QStringLiteral("Comprobando…");
+        item.status = i18n::text("Comprobando…");
         probe(row);
         fetchRelease(row);
     }
@@ -165,12 +166,12 @@ void UpdateManager::probe(int row)
     }
     const QString program = toolPath(item.key);
     if (program.isEmpty() || !QFileInfo(program).isFile()) {
-        item.installed = QStringLiteral("No instalado"); item.missing = true;
+        item.installed = i18n::text("No instalado"); item.missing = true;
         checkedOne(); return;
     }
     const QString temporary = QDir(cacheRoot()).filePath("probe-" + QUuid::createUuid().toString(QUuid::WithoutBraces));
     if (!QDir().mkpath(temporary)) {
-        item.localError = QStringLiteral("No se puede preparar la consulta local"); checkedOne(); return;
+        item.localError = i18n::text("No se puede preparar la consulta local"); checkedOne(); return;
     }
     auto environment = QProcessEnvironment::systemEnvironment();
     environment.insert("TEMP", QDir::toNativeSeparators(temporary));
@@ -194,7 +195,7 @@ void UpdateManager::probe(int row)
         output->append(process->readAllStandardOutput());
         auto &entry = m_items[row];
         const auto version = success ? numericVersion(QString::fromUtf8(*output)) : QString();
-        if (version.isEmpty()) entry.localError = QStringLiteral("No se pudo leer la versión instalada");
+        if (version.isEmpty()) entry.localError = i18n::text("No se pudo leer la versión instalada");
         else {
             entry.installed = version;
             if (entry.key == "ffmpeg") {
@@ -240,7 +241,7 @@ void UpdateManager::fetchRelease(int row)
         auto &entry = m_items[row];
         const auto document = QJsonDocument::fromJson(*bytes);
         if (reply->error() != QNetworkReply::NoError || !document.isArray()) {
-            entry.remoteError = QStringLiteral("No se pudo consultar GitHub (%1)")
+            entry.remoteError = i18n::text("No se pudo consultar GitHub (%1)")
                 .arg(reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt());
         } else {
             const bool previews = entry.key == "convert" && QSettings().value("updates/prereleases", false).toBool();
@@ -285,18 +286,18 @@ void UpdateManager::checkedOne()
     for (auto &item : m_items) {
         if (!item.localError.isEmpty()) item.status = item.localError;
         else if (!item.remoteError.isEmpty()) item.status = item.remoteError;
-        else if (item.latest.isEmpty()) item.status = QStringLiteral("Sin publicación compatible en este canal");
-        else if (item.digest.isEmpty()) item.status = QStringLiteral("La publicación no incluye SHA-256");
+        else if (item.latest.isEmpty()) item.status = i18n::text("Sin publicación compatible en este canal");
+        else if (item.digest.isEmpty()) item.status = i18n::text("La publicación no incluye SHA-256");
         else if ((item.missing && (numericVersion(item.installed).isEmpty() ||
                  QVersionNumber::compare(QVersionNumber::fromString(item.latest), QVersionNumber::fromString(item.installed)) >= 0)) ||
                  QVersionNumber::compare(QVersionNumber::fromString(item.latest), QVersionNumber::fromString(item.installed)) > 0) {
             item.available = true; ++count;
-            item.status = item.missing ? QStringLiteral("Disponible para instalar") : QStringLiteral("Nueva versión disponible");
-        } else item.status = QStringLiteral("Al día");
+            item.status = item.missing ? i18n::text("Disponible para instalar") : i18n::text("Nueva versión disponible");
+        } else item.status = i18n::text("Al día");
     }
     m_busy = false;
-    m_message = count ? QStringLiteral("%1 actualizaciones disponibles. Elige un componente para actualizar.").arg(count)
-                      : QStringLiteral("Comprobación terminada. Consulta el estado de cada componente.");
+    m_message = count ? i18n::text("%1 actualizaciones disponibles. Elige un componente para actualizar.").arg(count)
+                      : i18n::text("Comprobación terminada. Consulta el estado de cada componente.");
     emit changed();
     emit available(count);
 }
@@ -304,17 +305,17 @@ void UpdateManager::checkedOne()
 void UpdateManager::install(int row)
 {
     if (m_busy || row < 0 || row >= m_items.size() || !m_items[row].available) return;
-    if (m_queueBusy()) { m_message = QStringLiteral("Detén la cola antes de actualizar."); emit changed(); return; }
+    if (m_queueBusy()) { m_message = i18n::text("Detén la cola antes de actualizar."); emit changed(); return; }
 #ifndef Q_OS_WIN
-    m_message = QStringLiteral("La instalación integrada está disponible para Windows x64."); emit changed(); return;
+    m_message = i18n::text("La instalación integrada está disponible para Windows x64."); emit changed(); return;
 #endif
     QTemporaryFile writable(QDir(QCoreApplication::applicationDirPath()).filePath(".update-write-XXXXXX"));
-    if (!writable.open()) { m_message = QStringLiteral("La carpeta de Convert no permite escritura: ") + writable.errorString(); emit changed(); return; }
+    if (!writable.open()) { m_message = i18n::text("La carpeta de Convert no permite escritura: ") + writable.errorString(); emit changed(); return; }
     m_work = QDir(cacheRoot()).filePath(QUuid::createUuid().toString(QUuid::WithoutBraces));
-    if (!QDir().mkpath(m_work)) { m_message = QStringLiteral("No se puede preparar la descarga."); emit changed(); return; }
+    if (!QDir().mkpath(m_work)) { m_message = i18n::text("No se puede preparar la descarga."); emit changed(); return; }
     const auto item = m_items[row];
     if (item.size <= 0 || item.size > 2LL * 1024 * 1024 * 1024) {
-        m_message = QStringLiteral("El tamaño publicado no es válido."); emit changed(); return;
+        m_message = i18n::text("El tamaño publicado no es válido."); emit changed(); return;
     }
     delete m_package; delete m_hash;
     m_package = new QFile(QDir(m_work).filePath(item.assetName));
@@ -324,7 +325,7 @@ void UpdateManager::install(int row)
     }
     m_busy = m_installing = true; m_cancelled = false; m_writeError.clear(); m_progress = 0;
     emit installationChanged(true);
-    m_message = QStringLiteral("Descargando %1 %2…").arg(item.name, item.latest);
+    m_message = i18n::text("Descargando %1 %2…").arg(item.name, item.latest);
     emit log(m_message);
     emit changed();
     auto request = requestFor(item.download);
@@ -334,7 +335,7 @@ void UpdateManager::install(int row)
     const auto drain = [this, reply, item] {
         const auto bytes = reply->readAll();
         if (m_package->size() + bytes.size() > item.size || m_package->write(bytes) != bytes.size()) {
-            m_writeError = QStringLiteral("Error al escribir la descarga o tamaño inesperado."); reply->abort(); return;
+            m_writeError = i18n::text("Error al escribir la descarga o tamaño inesperado."); reply->abort(); return;
         }
         m_hash->addData(bytes);
     };
@@ -346,14 +347,14 @@ void UpdateManager::install(int row)
         drain();
         const bool flushed = m_package->flush();
         m_package->close(); m_download = nullptr;
-        const QString error = m_cancelled ? QStringLiteral("Actualización cancelada.")
+        const QString error = m_cancelled ? i18n::text("Actualización cancelada.")
             : !m_writeError.isEmpty() ? m_writeError
             : reply->error() != QNetworkReply::NoError ? reply->errorString()
-            : !flushed || QFileInfo(m_package->fileName()).size() != item.size ? QStringLiteral("La descarga está incompleta.")
-            : QString::fromLatin1(m_hash->result().toHex()) != item.digest ? QStringLiteral("La descarga no coincide con su SHA-256.") : QString();
+            : !flushed || QFileInfo(m_package->fileName()).size() != item.size ? i18n::text("La descarga está incompleta.")
+            : QString::fromLatin1(m_hash->result().toHex()) != item.digest ? i18n::text("La descarga no coincide con su SHA-256.") : QString();
         reply->deleteLater();
         if (!error.isEmpty()) { m_package->remove(); finishInstallation(error); return; }
-        if (m_queueBusy()) { finishInstallation(QStringLiteral("La cola está en uso; no se han sustituido archivos.")); return; }
+        if (m_queueBusy()) { finishInstallation(i18n::text("La cola está en uso; no se han sustituido archivos.")); return; }
         beginInstaller(row);
     });
 }
@@ -365,7 +366,7 @@ void UpdateManager::cancel()
         m_cancelled = true;
         QFile cancel(QDir(m_work).filePath("cancel"));
         if (cancel.open(QIODevice::WriteOnly)) cancel.write("cancel");
-        m_message = QStringLiteral("Cancelando la preparación de la actualización…");
+        m_message = i18n::text("Cancelando la preparación de la actualización…");
         emit changed();
     }
 }
@@ -377,7 +378,7 @@ void UpdateManager::beginInstaller(int row)
     QFile source(":/update-install.ps1");
     QFile script(work.filePath("update-install.ps1"));
     if (!source.open(QIODevice::ReadOnly) || !script.open(QIODevice::WriteOnly)) {
-        finishInstallation(QStringLiteral("No se puede preparar el instalador.")); return;
+        finishInstallation(i18n::text("No se puede preparar el instalador.")); return;
     }
     const auto content = source.readAll();
     if (script.write(content) != content.size()) { finishInstallation(script.errorString()); return; }
@@ -386,18 +387,18 @@ void UpdateManager::beginInstaller(int row)
     if (!writeJson(plan, {{"schema", 1}, {"component", item.key}, {"version", item.latest},
                          {"sha256", item.digest}, {"package", m_package->fileName()},
                          {"application", QCoreApplication::applicationDirPath()},
-                         {"parentPid", double(QCoreApplication::applicationPid())}})) {
-        finishInstallation(QStringLiteral("No se puede guardar el plan de actualización.")); return;
+                         {"parentPid", double(QCoreApplication::applicationPid())}, {"language", i18n::language()}})) {
+        finishInstallation(i18n::text("No se puede guardar el plan de actualización.")); return;
     }
     m_progress = -1;
-    m_message = QStringLiteral("Verificando e instalando %1…").arg(item.name);
+    m_message = i18n::text("Verificando e instalando %1…").arg(item.name);
     emit changed();
     const QStringList arguments{"-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script.fileName(), "-PlanPath", plan};
     if (item.key == "convert") {
         QProcess helper;
         hideConsole(&helper);
         helper.setProgram(powershell()); helper.setArguments(arguments); helper.setWorkingDirectory(m_work);
-        if (!helper.startDetached()) { finishInstallation(QStringLiteral("No se pudo iniciar el instalador.")); return; }
+        if (!helper.startDetached()) { finishInstallation(i18n::text("No se pudo iniciar el instalador.")); return; }
         m_waitingRestart = true;
         emit changed();
         auto *timer = new QTimer(this);
@@ -408,17 +409,17 @@ void UpdateManager::beginInstaller(int row)
             if (result.open(QIODevice::ReadOnly)) {
                 timer->stop(); timer->deleteLater();
                 const auto error = QJsonDocument::fromJson(result.readAll()).object().value("error").toString();
-                finishInstallation(error.isEmpty() ? QStringLiteral("No se pudo preparar la actualización.") : error);
+                finishInstallation(error.isEmpty() ? i18n::text("No se pudo preparar la actualización.") : error);
             } else if (!m_cancelled && QFileInfo::exists(work.filePath("ready"))) {
                 timer->stop(); timer->deleteLater();
                 m_waitingRestart = false;
-                m_message = QStringLiteral("Reiniciando Convert para instalar la actualización…");
+                m_message = i18n::text("Reiniciando Convert para instalar la actualización…");
                 QSettings().setValue("updates/pendingResult", work.filePath("result.json"));
                 emit changed(); emit restartReady();
             } else if (*elapsed >= 240000) {
                 QFile cancel(work.filePath("cancel")); if (cancel.open(QIODevice::WriteOnly)) cancel.write("cancel");
                 timer->stop(); timer->deleteLater();
-                finishInstallation(QStringLiteral("El instalador no pudo preparar la actualización. Convert sigue abierto."));
+                finishInstallation(i18n::text("El instalador no pudo preparar la actualización. Convert sigue abierto."));
             }
         });
         timer->start(250);
@@ -442,7 +443,7 @@ void UpdateManager::beginInstaller(int row)
         QJsonObject state;
         if (result.open(QIODevice::ReadOnly)) state = QJsonDocument::fromJson(result.readAll()).object();
         if (code != 0 || status != QProcess::NormalExit || state.value("status").toString() != "ok") {
-            finishInstallation(state.value("error").toString(QStringLiteral("El instalador ha fallado. Consulta el registro."))); return;
+            finishInstallation(state.value("error").toString(i18n::text("El instalador ha fallado. Consulta el registro."))); return;
         }
         const QDir tools(QDir(QCoreApplication::applicationDirPath()).filePath("tools"));
         QSettings settings;
@@ -458,21 +459,19 @@ void UpdateManager::beginInstaller(int row)
 void UpdateManager::finishInstallation(const QString &error)
 {
     m_busy = m_installing = m_waitingRestart = false; m_progress = error.isEmpty() ? 100 : 0;
-    m_message = error.isEmpty() ? QStringLiteral("Actualización instalada. La copia anterior queda en .update-backup.") : error;
+    m_message = error.isEmpty() ? i18n::text("Actualización instalada. La copia anterior queda en .update-backup.") : error;
     emit log(m_message); emit installationChanged(false); emit changed();
 }
 
 UpdateDialog::UpdateDialog(UpdateManager *manager, QWidget *parent) : QDialog(parent), m_manager(manager)
 {
-    setWindowTitle(QStringLiteral("Actualizaciones · Convert"));
+    setWindowTitle(i18n::text("Actualizaciones · Convert"));
     resize(860, 440);
     auto *layout = new QVBoxLayout(this);
-    auto *intro = new QLabel(QStringLiteral("Compara las versiones instaladas con las publicaciones de sus proyectos.\n"
-        "Las herramientas se instalan en tools; se conservan las rutas externas y se selecciona la copia nueva.\n"
-        "Convert requiere reiniciarse. Tus preferencias, cola pendiente y carpetas de salida se conservan."));
+    auto *intro = new QLabel(i18n::text("Compara las versiones instaladas con las publicaciones de sus proyectos.\nLas herramientas se instalan en tools; se conservan las rutas externas y se selecciona la copia nueva.\nConvert requiere reiniciarse. Tus preferencias, cola pendiente y carpetas de salida se conservan."));
     intro->setWordWrap(true); layout->addWidget(intro);
     m_table = new QTableWidget(int(manager->items().size()), 4);
-    m_table->setHorizontalHeaderLabels({"Componente", "Instalada", "Disponible", "Estado"});
+    m_table->setHorizontalHeaderLabels({i18n::text("Componente"), i18n::text("Instalada"), i18n::text("Disponible"), i18n::text("Estado")});
     m_table->setSelectionBehavior(QAbstractItemView::SelectRows);
     m_table->setSelectionMode(QAbstractItemView::SingleSelection);
     m_table->setEditTriggers(QAbstractItemView::NoEditTriggers);
@@ -480,22 +479,22 @@ UpdateDialog::UpdateDialog(UpdateManager *manager, QWidget *parent) : QDialog(pa
     m_table->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
     m_table->horizontalHeader()->setSectionResizeMode(3, QHeaderView::Stretch);
     layout->addWidget(m_table, 1);
-    auto *automatic = new QCheckBox(QStringLiteral("Comprobar al iniciar (como máximo una vez al día)"));
+    auto *automatic = new QCheckBox(i18n::text("Comprobar al iniciar (como máximo una vez al día)"));
     automatic->setChecked(QSettings().value("updates/checkAtStartup", true).toBool());
     connect(automatic, &QCheckBox::toggled, this, [](bool enabled) { QSettings().setValue("updates/checkAtStartup", enabled); });
     layout->addWidget(automatic);
-    auto *previews = new QCheckBox(QStringLiteral("Incluir versiones preliminares de Convert"));
+    auto *previews = new QCheckBox(i18n::text("Incluir versiones preliminares de Convert"));
     previews->setChecked(QSettings().value("updates/prereleases", false).toBool());
     connect(previews, &QCheckBox::toggled, this, [](bool enabled) { QSettings().setValue("updates/prereleases", enabled); });
     layout->addWidget(previews);
     m_message = new QLabel; m_message->setWordWrap(true); layout->addWidget(m_message);
     m_progress = new QProgressBar; layout->addWidget(m_progress);
     auto *buttons = new QHBoxLayout;
-    m_check = new QPushButton("Comprobar ahora");
-    m_release = new QPushButton("Ver publicación");
-    m_install = new QPushButton("Actualizar seleccionado");
-    m_cancel = new QPushButton("Cancelar descarga");
-    auto *close = new QPushButton("Cerrar");
+    m_check = new QPushButton(i18n::text("Comprobar ahora"));
+    m_release = new QPushButton(i18n::text("Ver publicación"));
+    m_install = new QPushButton(i18n::text("Actualizar seleccionado"));
+    m_cancel = new QPushButton(i18n::text("Cancelar descarga"));
+    auto *close = new QPushButton(i18n::text("Cerrar"));
     for (auto *button : {m_check, m_release, m_install, m_cancel, close}) buttons->addWidget(button);
     layout->addLayout(buttons);
     connect(m_check, &QPushButton::clicked, manager, &UpdateManager::check);
@@ -527,7 +526,7 @@ void UpdateDialog::refresh()
     const int row = m_table->currentRow();
     m_check->setEnabled(!m_manager->busy());
     m_install->setEnabled(!m_manager->busy() && row >= 0 && m_manager->items()[row].available);
-    m_install->setText(row == 0 ? "Actualizar y reiniciar" : "Actualizar herramienta");
+    m_install->setText(row == 0 ? i18n::text("Actualizar y reiniciar") : i18n::text("Actualizar herramienta"));
     m_release->setEnabled(row >= 0 && !m_manager->items()[row].release.isEmpty());
     m_cancel->setEnabled(m_manager->canCancel());
     m_message->setText(m_manager->message());

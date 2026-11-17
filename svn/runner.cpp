@@ -1,3 +1,4 @@
+#include "i18n.h"
 #include "runner.h"
 #include <QCoreApplication>
 #include <QDir>
@@ -100,34 +101,34 @@ void Runner::next()
     m_downloadTemp.reset();
     j.destination = outputDirectory(j.destination);
     const auto displayDestination = QDir::toNativeSeparators(j.destination);
-    emit log("Destino: " + displayDestination);
+    emit log(i18n::text("Destino: ") + displayDestination);
     if (isAudio(j.format)) emit log("Audio: " + audioDescription(j.format, j.audio));
     if (j.destination.isEmpty()) {
-        complete(false, "La carpeta de destino está vacía. Selecciona una carpeta y pulsa Aplicar a selección."); return;
+        complete(false, i18n::text("La carpeta de destino está vacía. Selecciona una carpeta y pulsa Aplicar a selección.")); return;
     }
     if (QFileInfo::exists(j.destination) && !QFileInfo(j.destination).isDir()) {
-        complete(false, "El destino es un archivo, no una carpeta: " + displayDestination); return;
+        complete(false, i18n::text("El destino es un archivo, no una carpeta: ") + displayDestination); return;
     }
     if (!QDir().mkpath(j.destination)) {
-        complete(false, "No se puede crear la carpeta de destino: " + displayDestination
-                 + ". Revisa la ruta y los permisos; después pulsa Aplicar a selección."); return;
+        complete(false, i18n::text("No se puede crear la carpeta de destino: ") + displayDestination
+                 + i18n::text(". Revisa la ruta y los permisos; después pulsa Aplicar a selección.")); return;
     }
     {
         QTemporaryFile writable(QDir(j.destination).filePath(".convert-write-XXXXXX"));
         if (!writable.open()) {
-            complete(false, "No se puede escribir en el destino: " + displayDestination
+            complete(false, i18n::text("No se puede escribir en el destino: ") + displayDestination
                      + ". " + writable.errorString()
-                     + ". Usa el botón derecho sobre la entrada y elige Cambiar carpeta de salida.");
+                     + i18n::text(". Usa el botón derecho sobre la entrada y elige Cambiar carpeta de salida."));
             return;
         }
     }
     const auto ffmpeg = toolPath("ffmpeg");
     if (ffmpeg.isEmpty() || !QFileInfo(ffmpeg).isExecutable()) {
-        complete(false, "No se encuentra FFmpeg. Revisa Preferencias."); return;
+        complete(false, i18n::text("No se encuentra FFmpeg. Revisa Preferencias.")); return;
     }
     if (j.kind == Source::File) {
         if (!QFileInfo(j.source).isFile()) {
-            complete(false, "El archivo de origen ya no existe."); return;
+            complete(false, i18n::text("El archivo de origen ya no existe.")); return;
         }
         const auto base = QFileInfo(j.source).completeBaseName();
         QDir dir(j.destination);
@@ -141,14 +142,14 @@ void Runner::next()
         {
             QTemporaryFile temporary(dir.filePath("convert-XXXXXX." + j.format));
             if (!temporary.open()) {
-                complete(false, "No se puede crear el archivo temporal en " + displayDestination
+                complete(false, i18n::text("No se puede crear el archivo temporal en ") + displayDestination
                          + ": " + temporary.errorString());
                 return;
             }
             m_staged = temporary.fileName();
             temporary.setAutoRemove(false);
         }
-        emit log("Archivo temporal: " + QDir::toNativeSeparators(m_staged));
+        emit log(i18n::text("Archivo temporal: ") + QDir::toNativeSeparators(m_staged));
         const auto probe = toolPath("ffprobe");
         if (probe.isEmpty()) convert();
         else execute(probe, {"-v", "error", "-show_entries", "format=duration",
@@ -159,7 +160,7 @@ void Runner::next()
     // Los identificadores solo se usan en una carpeta temporal de trabajo.
     // Los archivos finales se publican con nombres legibles en el destino.
     if (!prepareProcessTemporaryDirectory()) {
-        complete(false, "No se puede preparar la carpeta temporal de descarga."); return;
+        complete(false, i18n::text("No se puede preparar la carpeta temporal de descarga.")); return;
     }
     // Work locally: SMB shares can permit files but deny mkdir or the private
     // permissions requested by QTemporaryDir. Keep this folder separate from
@@ -167,19 +168,19 @@ void Runner::next()
     const QDir temporaryRoot(QFileInfo(m_runtimeTemp->path()).absolutePath());
     m_downloadTemp = std::make_unique<QTemporaryDir>(temporaryRoot.filePath("convert-download-XXXXXX"));
     if (!m_downloadTemp->isValid()) {
-        complete(false, "No se puede crear la carpeta de trabajo de la descarga en "
+        complete(false, i18n::text("No se puede crear la carpeta de trabajo de la descarga en ")
                  + QDir::toNativeSeparators(temporaryRoot.path()) + ": " + m_downloadTemp->errorString()); return;
     }
     const QString folder = m_downloadTemp->path();
-    emit log("Carpeta de trabajo de descarga: " + QDir::toNativeSeparators(folder));
+    emit log(i18n::text("Carpeta de trabajo de descarga: ") + QDir::toNativeSeparators(folder));
     j.result = j.destination;
     m_model->refresh(m_row);
     emit checkpoint();
     const auto deno = toolPath("deno");
     const bool hasDeno = !deno.isEmpty() && QFileInfo(deno).isExecutable();
-    if (hasDeno) emit log("Motor JavaScript: " + QDir::toNativeSeparators(deno));
+    if (hasDeno) emit log(i18n::text("Motor JavaScript: ") + QDir::toNativeSeparators(deno));
     if (j.kind == Source::Spotify) {
-        if (!isAudio(j.format)) { complete(false, "Spotify requiere un formato de audio."); return; }
+        if (!isAudio(j.format)) { complete(false, i18n::text("Spotify requiere un formato de audio.")); return; }
         m_spotifyMetadata = QDir(m_runtimeTemp->path()).filePath("download.spotdl");
         m_spotifyErrors = QDir(m_runtimeTemp->path()).filePath("errors.txt");
         QStringList args{"download", j.source, "--format", j.format,
@@ -195,7 +196,7 @@ void Runner::next()
         execute(toolPath("spotdl"), args);
     } else {
         if (isAudio(j.format))
-            emit log(QStringLiteral("YouTube: descargando el audio. La conversión a %1 comenzará al terminar la descarga de la entrada.")
+            emit log(i18n::text("YouTube: descargando el audio. La conversión a %1 comenzará al terminar la descarga de la entrada.")
                      .arg(j.format.toUpper()));
         QStringList args{"--ignore-config", "--newline", "--progress", "--no-colors", "--no-overwrites",
                          "--windows-filenames", "--ffmpeg-location", QFileInfo(ffmpeg).absolutePath(),
@@ -220,14 +221,14 @@ void Runner::next()
 
 void Runner::convert()
 {
-    if (m_cancelled) { complete(false, "Cancelado por el usuario."); return; }
+    if (m_cancelled) { complete(false, i18n::text("Cancelado por el usuario.")); return; }
     const auto &j = m_model->jobs[m_row];
     execute(toolPath("ffmpeg"), conversionArguments(j.source, m_staged, j.format, j.audio, true));
 }
 
 void Runner::convertDownloadedAudio()
 {
-    if (m_cancelled) { complete(false, "Cancelado por el usuario."); return; }
+    if (m_cancelled) { complete(false, i18n::text("Cancelado por el usuario.")); return; }
     auto &job = m_model->jobs[m_row];
     if (m_downloadIndex >= m_downloadFiles.size()) {
         publishDownloads();
@@ -235,17 +236,17 @@ void Runner::convertDownloadedAudio()
     }
     const QFileInfo input(m_downloadFiles[m_downloadIndex]);
     if (!input.isFile() || input.size() <= 0) {
-        complete(false, "No se ha encontrado el audio descargado."); return;
+        complete(false, i18n::text("No se ha encontrado el audio descargado.")); return;
     }
     const QDir folder(QDir(m_downloadTemp->path()).filePath("audio"));
     if (!QDir().mkpath(folder.path())) {
-        complete(false, "No se puede preparar la conversión del audio descargado."); return;
+        complete(false, i18n::text("No se puede preparar la conversión del audio descargado.")); return;
     }
     m_encodingDownload = true;
     m_encodedDownload = folder.filePath(input.completeBaseName() + "." + job.format);
     job.progress = -1;
     m_model->refresh(m_row);
-    emit log(QString("Convirtiendo audio %1 de %2").arg(m_downloadIndex + 1).arg(m_downloadFiles.size()));
+    emit log(i18n::text("Convirtiendo audio %1 de %2").arg(m_downloadIndex + 1).arg(m_downloadFiles.size()));
     execute(toolPath("ffmpeg"), conversionArguments(input.absoluteFilePath(), m_encodedDownload,
                                                    job.format, job.audio));
 }
@@ -266,21 +267,21 @@ bool Runner::prepareProcessTemporaryDirectory()
         if (!QDir().mkpath(root)) continue;
         auto folder = std::make_unique<QTemporaryDir>(QDir(root).filePath("run-XXXXXX"));
         if (!folder->isValid()) continue;
-        emit log("Carpeta temporal de herramientas: " + QDir::toNativeSeparators(folder->path()));
+        emit log(i18n::text("Carpeta temporal de herramientas: ") + QDir::toNativeSeparators(folder->path()));
         m_runtimeTemp = std::move(folder);
         return true;
     }
-    emit log("No se pudo crear una carpeta temporal en: " + roots.join("; "));
+    emit log(i18n::text("No se pudo crear una carpeta temporal en: ") + roots.join("; "));
     return false;
 }
 
 void Runner::execute(const QString &program, const QStringList &arguments, bool probe)
 {
     if (program.isEmpty() || !QFileInfo(program).isExecutable()) {
-        complete(false, "Herramienta no encontrada. Configura sus rutas en Preferencias."); return;
+        complete(false, i18n::text("Herramienta no encontrada. Configura sus rutas en Preferencias.")); return;
     }
     if (!prepareProcessTemporaryDirectory()) {
-        complete(false, "No se puede crear la carpeta temporal de las herramientas. Comprueba permisos y espacio libre.");
+        complete(false, i18n::text("No se puede crear la carpeta temporal de las herramientas. Comprueba permisos y espacio libre."));
         return;
     }
     m_probe = probe;
@@ -303,7 +304,7 @@ void Runner::execute(const QString &program, const QStringList &arguments, bool 
             if (!QDir().mkpath(dir.filePath(".spotdl")) ||
                 !QDir().mkpath(dir.filePath("AppData/Local")) ||
                 !QDir().mkpath(dir.filePath("AppData/Roaming"))) {
-                lastError = "No se pueden crear las carpetas de datos en " + candidate;
+                lastError = i18n::text("No se pueden crear las carpetas de datos en ") + candidate;
                 continue;
             }
             QTemporaryFile writable(dir.filePath(".spotdl/.convert-write-XXXXXX"));
@@ -315,14 +316,14 @@ void Runner::execute(const QString &program, const QStringList &arguments, bool 
             break;
         }
         if (profile.isEmpty()) {
-            complete(false, "No se pueden preparar los datos locales de spotDL. " + lastError);
+            complete(false, i18n::text("No se pueden preparar los datos locales de spotDL. ") + lastError);
             return;
         }
         // Solo afecta a spotDL y a sus hijos; no altera el perfil de Windows.
         env.insert("USERPROFILE", QDir::toNativeSeparators(profile));
         env.insert("LOCALAPPDATA", QDir::toNativeSeparators(QDir(profile).filePath("AppData/Local")));
         env.insert("APPDATA", QDir::toNativeSeparators(QDir(profile).filePath("AppData/Roaming")));
-        emit log("Datos de spotDL: " + QDir::toNativeSeparators(QDir(profile).filePath(".spotdl")));
+        emit log(i18n::text("Datos de spotDL: ") + QDir::toNativeSeparators(QDir(profile).filePath(".spotdl")));
     }
 #endif
     QStringList dirs;
@@ -364,7 +365,7 @@ void Runner::execute(const QString &program, const QStringList &arguments, bool 
             m_processTree = job;
         } else {
             if (job) CloseHandle(job);
-            emit log("Aviso: no se pudo agrupar el proceso; la cancelación solo terminará el proceso principal.");
+            emit log(i18n::text("Aviso: no se pudo agrupar el proceso; la cancelación solo terminará el proceso principal."));
         }
         if (child) CloseHandle(child);
 #else
@@ -386,7 +387,7 @@ void Runner::execute(const QString &program, const QStringList &arguments, bool 
         closeProcessTree();
         m_process = nullptr;
         process->deleteLater();
-        if (m_cancelled) { complete(false, "Cancelado por el usuario."); return; }
+        if (m_cancelled) { complete(false, i18n::text("Cancelado por el usuario.")); return; }
         if (!m_publicationError.isEmpty()) { complete(false, m_publicationError); return; }
         if (m_probe) {
             m_duration = QJsonDocument::fromJson(m_probeData).object().value("format")
@@ -397,15 +398,15 @@ void Runner::execute(const QString &program, const QStringList &arguments, bool 
         }
         bool success = code == 0 && status == QProcess::NormalExit;
         if (!success && m_temporaryFailure) {
-            complete(false, "La herramienta no pudo crear su directorio temporal en "
+            complete(false, i18n::text("La herramienta no pudo crear su directorio temporal en ")
                      + QDir::toNativeSeparators(m_runtimeTemp->path())
-                     + ". Comprueba permisos y espacio libre. Consulta el registro.");
+                     + i18n::text(". Comprueba permisos y espacio libre. Consulta el registro."));
             return;
         }
         auto &j = m_model->jobs[m_row];
         if (m_encodingDownload) {
             if (!success || QFileInfo(m_encodedDownload).size() <= 0) {
-                complete(false, "No se pudo convertir el audio descargado. Consulta el registro."); return;
+                complete(false, i18n::text("No se pudo convertir el audio descargado. Consulta el registro.")); return;
             }
             m_downloadFiles[m_downloadIndex++] = m_encodedDownload;
             convertDownloadedAudio();
@@ -414,7 +415,7 @@ void Runner::execute(const QString &program, const QStringList &arguments, bool 
         if (success && j.kind != Source::File) {
             if (j.kind == Source::YouTube && isAudio(j.format)) {
                 if (m_downloadFiles.isEmpty()) {
-                    complete(false, "No se ha confirmado ningún archivo de audio descargado."); return;
+                    complete(false, i18n::text("No se ha confirmado ningún archivo de audio descargado.")); return;
                 }
                 convertDownloadedAudio();
                 return;
@@ -425,12 +426,12 @@ void Runner::execute(const QString &program, const QStringList &arguments, bool 
                     const auto detail = QString::fromUtf8(errors.readAll()).trimmed();
                     if (!detail.isEmpty()) {
                         emit log(detail);
-                        complete(false, "Descarga con errores parciales. Consulta el registro."); return;
+                        complete(false, i18n::text("Descarga con errores parciales. Consulta el registro.")); return;
                     }
                 }
                 QFile metadata(m_spotifyMetadata);
                 if (!metadata.open(QIODevice::ReadOnly)) {
-                    complete(false, "spotDL no ha generado la relación de canciones. Consulta el registro."); return;
+                    complete(false, i18n::text("spotDL no ha generado la relación de canciones. Consulta el registro.")); return;
                 }
                 const auto document = QJsonDocument::fromJson(metadata.readAll());
                 bool metadataValid = document.isArray() && !document.array().isEmpty();
@@ -455,7 +456,7 @@ void Runner::execute(const QString &program, const QStringList &arguments, bool 
                     }
                 }
                 if (!metadataValid || ids.isEmpty() || m_downloadFiles.size() != ids.size()) {
-                    complete(false, "Faltan archivos de las canciones solicitadas. Consulta el registro."); return;
+                    complete(false, i18n::text("Faltan archivos de las canciones solicitadas. Consulta el registro.")); return;
                 }
             }
             bool valid = !m_downloadFiles.isEmpty();
@@ -465,7 +466,7 @@ void Runner::execute(const QString &program, const QStringList &arguments, bool 
                 valid &= file.isFile() && file.size() > 0 && file.suffix().compare(j.format, Qt::CaseInsensitive) == 0;
             }
             if (!valid) {
-                complete(false, "No se han confirmado archivos de esta descarga en el formato solicitado."); return;
+                complete(false, i18n::text("No se han confirmado archivos de esta descarga en el formato solicitado.")); return;
             }
             publishDownloads();
             return;
@@ -474,11 +475,11 @@ void Runner::execute(const QString &program, const QStringList &arguments, bool 
             QFile staged(m_staged);
             success = staged.size() > 0 && staged.rename(m_output);
             if (success) j.result = m_output;
-            else { complete(false, "No se pudo guardar la salida en " + QDir::toNativeSeparators(m_output)
+            else { complete(false, i18n::text("No se pudo guardar la salida en ") + QDir::toNativeSeparators(m_output)
                             + ": " + staged.errorString()); return; }
         }
-        complete(success, success ? "Finalizado." : "La herramienta terminó con código "
-                 + QString::number(code) + ". Consulta el registro.");
+        complete(success, success ? i18n::text("Finalizado.") : i18n::text("La herramienta terminó con código ")
+                 + QString::number(code) + i18n::text(". Consulta el registro."));
     });
     process->start(program, arguments);
     if (probe) QTimer::singleShot(15000, process, [process] {
@@ -509,7 +510,7 @@ void Runner::consume(bool final)
                 const auto path = values.first().toString();
                 if (!m_downloadFiles.contains(path)) {
                     m_downloadFiles << path;
-                    j.detail = QStringLiteral("Descargado en temporal: ") + QFileInfo(path).fileName();
+                    j.detail = i18n::text("Descargado en temporal: ") + QFileInfo(path).fileName();
                     emit log(j.detail);
                     m_model->refresh(m_row);
                 }
@@ -575,7 +576,7 @@ void Runner::publishDownloads(const QStringList &requested, bool finalBatch)
             m_spotifyQueued.insert(path);
             m_spotifyCopyQueue << path;
         }
-        complete(true, "Finalizado.");
+        complete(true, i18n::text("Finalizado."));
         return;
     }
     struct CopyResult { QMap<QString, QString> copies; QString error; };
@@ -585,21 +586,21 @@ void Runner::publishDownloads(const QStringList &requested, bool finalBatch)
     const auto job = m_model->jobs[m_row];
     const auto files = finalBatch ? m_downloadFiles : requested;
     if (!finalBatch) m_spotifyCopyActive = true;
-    emit log("Guardando descarga en: " + QDir::toNativeSeparators(job.destination));
+    emit log(i18n::text("Guardando descarga en: ") + QDir::toNativeSeparators(job.destination));
     m_model->jobs[m_row].progress = -1;
     m_model->refresh(m_row);
     // All network I/O runs off the UI thread; NewOnly never overwrites a file.
     auto *thread = QThread::create([job, files, result, cancelled] {
       const QDir destination(job.destination);
       for (const auto &path : files) {
-        if (cancelled->load()) { result->error = "Cancelado por el usuario."; return; }
+        if (cancelled->load()) { result->error = i18n::text("Cancelado por el usuario."); return; }
         QString name = QFileInfo(path).completeBaseName();
         if (job.kind == Source::Spotify)
             name.remove(QRegularExpression("^[A-Za-z0-9]{22} - "));
         else
             name.remove(QRegularExpression(" \\[[A-Za-z0-9_-]{11}\\]$"));
         name = name.trimmed();
-        if (name.isEmpty()) name = "descarga";
+        if (name.isEmpty()) name = i18n::text("descarga");
         const QString extension = "." + job.format;
         QString target = destination.filePath(name + extension);
         int suffix = 2;
@@ -607,13 +608,13 @@ void Runner::publishDownloads(const QStringList &requested, bool finalBatch)
             target = destination.filePath(name + " (" + QString::number(suffix++) + ")" + extension);
         QFile source(path);
         if (!source.open(QIODevice::ReadOnly)) {
-            result->error = "No se puede leer " + path + ": " + source.errorString(); return;
+            result->error = i18n::text("No se puede leer ") + path + ": " + source.errorString(); return;
         }
         QFile output(target);
         while (!output.open(QIODevice::WriteOnly | QIODevice::NewOnly)) {
-            if (cancelled->load()) { result->error = "Cancelado por el usuario."; return; }
+            if (cancelled->load()) { result->error = i18n::text("Cancelado por el usuario."); return; }
             if (!QFileInfo::exists(target)) {
-                result->error = "No se pudo guardar " + QDir::toNativeSeparators(target)
+                result->error = i18n::text("No se pudo guardar ") + QDir::toNativeSeparators(target)
                               + ": " + output.errorString(); return;
             }
             target = destination.filePath(name + " (" + QString::number(suffix++) + ")" + extension);
@@ -638,9 +639,9 @@ void Runner::publishDownloads(const QStringList &requested, bool finalBatch)
             total += count;
         }
         if (ok && !output.flush()) { result->error = output.errorString(); ok = false; }
-        if (cancelled->load()) { result->error = "Cancelado por el usuario."; ok = false; }
+        if (cancelled->load()) { result->error = i18n::text("Cancelado por el usuario."); ok = false; }
         if (ok && (total <= 0 || total != source.size() || output.size() != total)) {
-            result->error = "El archivo guardado tiene un tamaño incompleto."; ok = false;
+            result->error = i18n::text("El archivo guardado tiene un tamaño incompleto."); ok = false;
         }
         output.close();
         // Read back the destination before deleting the local download,
@@ -658,14 +659,14 @@ void Runner::publishDownloads(const QStringList &requested, bool finalBatch)
                     targetHash.addData(QByteArrayView(buffer.constData(), count));
                 }
                 if (ok && (verification.size() != total || targetHash.result() != sourceHash.result())) {
-                    result->error = "La copia no coincide con la descarga local."; ok = false;
+                    result->error = i18n::text("La copia no coincide con la descarga local."); ok = false;
                 }
             }
-            if (cancelled->load()) { result->error = "Cancelado por el usuario."; ok = false; }
+            if (cancelled->load()) { result->error = i18n::text("Cancelado por el usuario."); ok = false; }
         }
         if (!ok) {
-            result->error = "No se pudo guardar " + QDir::toNativeSeparators(target) + ": " + result->error;
-            if (!output.remove()) result->error += "\nNo se pudo borrar el archivo incompleto: " + target;
+            result->error = i18n::text("No se pudo guardar ") + QDir::toNativeSeparators(target) + ": " + result->error;
+            if (!output.remove()) result->error += i18n::text("\nNo se pudo borrar el archivo incompleto: ") + target;
             return;
         }
         result->copies.insert(path, target);
@@ -677,7 +678,7 @@ void Runner::publishDownloads(const QStringList &requested, bool finalBatch)
         // validation must also recognise songs already removed from staging.
         for (auto it = result->copies.cbegin(); it != result->copies.cend(); ++it) {
             m_publishedDownloads.insert(it.key(), it.value());
-            emit log("Guardado: " + QDir::toNativeSeparators(it.value()));
+            emit log(i18n::text("Guardado: ") + QDir::toNativeSeparators(it.value()));
             const QFileInfo source(it.key());
             const QString root = m_downloadTemp ? QDir(m_downloadTemp->path()).canonicalPath() : QString();
             const QString canonical = source.canonicalFilePath();
@@ -688,13 +689,13 @@ void Runner::publishDownloads(const QStringList &requested, bool finalBatch)
 #endif
             if (!root.isEmpty() && !source.isSymLink() && canonical.startsWith(root + '/', pathCase)) {
                 if (!QFile::remove(it.key()))
-                    emit log("Copia guardada; no se pudo borrar el temporal: " + QDir::toNativeSeparators(it.key()));
+                    emit log(i18n::text("Copia guardada; no se pudo borrar el temporal: ") + QDir::toNativeSeparators(it.key()));
                 else
-                    emit log("Temporal eliminado: " + QDir::toNativeSeparators(it.key()));
+                    emit log(i18n::text("Temporal eliminado: ") + QDir::toNativeSeparators(it.key()));
             }
         }
         if (finalBatch) {
-            complete(result->error.isEmpty(), result->error.isEmpty() ? "Finalizado." : result->error);
+            complete(result->error.isEmpty(), result->error.isEmpty() ? i18n::text("Finalizado.") : result->error);
             return;
         }
         m_spotifyCopyActive = false;
@@ -735,10 +736,10 @@ void Runner::complete(bool success, const QString &message)
     if (!completed && m_downloadTemp && m_downloadTemp->isValid() &&
         !QDir(m_downloadTemp->path()).entryList(QDir::AllEntries | QDir::NoDotAndDotDot).isEmpty()) {
         m_downloadTemp->setAutoRemove(false);
-        detail += "\nDescarga parcial conservada en: " + QDir::toNativeSeparators(m_downloadTemp->path());
+        detail += i18n::text("\nDescarga parcial conservada en: ") + QDir::toNativeSeparators(m_downloadTemp->path());
     }
     if (completed) {
-        emit log("Completado: " + j.source);
+        emit log(i18n::text("Completado: ") + j.source);
         ++m_completedCount;
         const int row = m_row;
         m_row = -1;
@@ -753,7 +754,7 @@ void Runner::complete(bool success, const QString &message)
     emit log(detail);
     if (!m_staged.isEmpty()) {
         if (QFileInfo::exists(m_staged) && !QFile::remove(m_staged))
-            emit log("No se pudo eliminar el archivo temporal: " + QDir::toNativeSeparators(m_staged));
+            emit log(i18n::text("No se pudo eliminar el archivo temporal: ") + QDir::toNativeSeparators(m_staged));
         m_staged.clear();
     }
     m_downloadTemp.reset();

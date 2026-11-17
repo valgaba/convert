@@ -19,6 +19,7 @@ SOURCES += \
     svn/runner.cpp
 SOURCES += svn/aboutdialog.cpp
 SOURCES += svn/updates.cpp
+SOURCES += svn/i18n.cpp
 
 HEADERS += \
     svn/mainwindow.h \
@@ -26,6 +27,7 @@ HEADERS += \
     svn/runner.h
 HEADERS += svn/aboutdialog.h
 HEADERS += svn/updates.h
+HEADERS += svn/i18n.h
 
 RESOURCES += svn/resources.qrc
 
@@ -49,3 +51,4 @@ DISTFILES += svn/convert.svg svn/convert.png generate-icon.ps1 svn/convert.rc
 DISTFILES += svn/splashscreen.png
 DISTFILES += prepare-runtime.ps1
 DISTFILES += app-version.txt svn/update-install.ps1 package-release.ps1
+DISTFILES += svn/english.json svn/qtbase_es.qm

@@ -1,3 +1,4 @@
+#include "i18n.h"
 #include "jobs.h"
 #include <QCoreApplication>
 #include <QDir>
@@ -51,8 +52,8 @@ QString audioDescription(const QString &format, AudioOptions options)
     return QStringLiteral("%1 · %2 · %3")
         .arg(format == "wav" || format == "flac" ? QString("%1 bits").arg(options.bitDepth)
                                                  : QString("%1 kb/s").arg(options.bitrate))
-        .arg(options.sampleRate ? QString("%1 Hz").arg(options.sampleRate) : QStringLiteral("Muestreo automático"))
-        .arg(options.channels == 1 ? QStringLiteral("Mono") : options.channels == 2 ? QStringLiteral("Estéreo") : QStringLiteral("Canales originales"));
+        .arg(options.sampleRate ? QString("%1 Hz").arg(options.sampleRate) : i18n::text("Muestreo automático"))
+        .arg(options.channels == 1 ? QStringLiteral("Mono") : options.channels == 2 ? i18n::text("Estéreo") : i18n::text("Canales originales"));
 }
 
 QString outputDirectory(const QString &text)
@@ -152,7 +153,7 @@ QVariant JobModel::headerData(int section, Qt::Orientation orientation, int role
 {
     if (orientation == Qt::Vertical && role == Qt::DisplayRole) return section + 1;
     if (orientation != Qt::Horizontal || role != Qt::DisplayRole) return {};
-    return QStringList{"Archivo / enlace", "Origen", "Formato", "Estado", "Progreso", "Destino"}.value(section);
+    return QStringList{i18n::text("Archivo / enlace"), i18n::text("Origen"), i18n::text("Formato"), i18n::text("Estado"), i18n::text("Progreso"), i18n::text("Destino")}.value(section);
 }
 QVariant JobModel::data(const QModelIndex &i, int role) const
 {
@@ -161,17 +162,17 @@ QVariant JobModel::data(const QModelIndex &i, int role) const
     if (role == Qt::UserRole) return int(j.kind);
     if (role == Qt::EditRole && i.column() == 2) return j.format;
     if (role == Qt::ToolTipRole && i.column() == 2)
-        return QString("Pulsa para elegir el formato de salida de esta entrada.")
+        return i18n::text("Pulsa para elegir el formato de salida de esta entrada.")
             + (isAudio(j.format) ? "\n" + audioDescription(j.format, j.audio)
-               + "\nBotón derecho → Opciones de audio…" : QString());
+               + i18n::text("\nBotón derecho → Opciones de audio…") : QString());
     if (role == Qt::ToolTipRole) return j.source + "\n" + j.detail + "\n" + j.result;
     if (role != Qt::DisplayRole) return {};
     switch (i.column()) {
     case 0: return j.kind == Source::File ? QFileInfo(j.source).fileName() : j.source;
-    case 1: return QStringList{"Archivo", "YouTube", "Spotify"}.at(int(j.kind));
+    case 1: return QStringList{i18n::text("Archivo"), "YouTube", "Spotify"}.at(int(j.kind));
     case 2: return j.format.toUpper() + " ▾";
-    case 3: return QStringList{"Pendiente", "Procesando", "Completado", "Error", "Cancelado"}.at(int(j.state));
-    case 4: return j.state == State::Running && j.progress < 0 ? "En curso…" : QString::number(j.progress) + " %";
+    case 3: return QStringList{i18n::text("Pendiente"), i18n::text("Procesando"), i18n::text("Completado"), i18n::text("Error"), i18n::text("Cancelado")}.at(int(j.state));
+    case 4: return j.state == State::Running && j.progress < 0 ? i18n::text("En curso…") : QString::number(j.progress) + " %";
     case 5: return j.result.isEmpty() ? j.destination : j.result;
     }
     return {};

@@ -6,5 +6,7 @@
         <file>convert.svg</file>
         <file>splashscreen.png</file>
         <file>update-install.ps1</file>
+        <file>english.json</file>
+        <file>qtbase_es.qm</file>
     </qresource>
 </RCC>

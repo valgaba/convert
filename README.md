@@ -305,6 +305,27 @@ No se modifica `C:/Users/<usuario>/.spotdl` ni los permisos del perfil de Window
 La redirección es necesaria incluso con `--no-cache`, porque spotDL crea su
 carpeta al importar los módulos, antes de leer las opciones de la línea de comandos.
 
+## Idioma de la interfaz
+
+Convert utiliza **inglés** por defecto. En **Preferences → Language / Idioma**
+se puede elegir **English** o **Castellano** y pulsar **Save / Guardar**. El cambio
+se guarda en `interface/language` mediante QSettings y se aplica al cerrar y
+volver a abrir Convert. Cancelar Preferencias descarta el cambio.
+
+La selección afecta a menús, tabla, opciones de audio, Acerca de, pantalla de
+inicio, gestor de actualizaciones y mensajes propios del registro e instalador.
+Los mensajes emitidos por FFmpeg, yt-dlp, spotDL, Windows y los cuadros de diálogo
+nativos conservan el idioma proporcionado por esas herramientas o el sistema.
+Los detalles históricos guardados en una cola también conservan su texto original.
+
+Las traducciones inglesas están en `svn/english.json` y los textos castellanos
+en las llamadas `i18n::text` del código. Ambos se incluyen en los recursos del
+ejecutable, sin necesitar archivos de idioma junto al programa. Se incluye
+también `svn/qtbase_es.qm`, procedente de Qt oficial 6.7.0, para los controles
+estándar de Qt en castellano; se distribuye con los avisos y licencias de Qt.
+Para incorporar mensajes nuevos hay que añadir la traducción al catálogo,
+conservando sus marcadores `%1`, `%2`, etc.
+
 ## Actualizaciones de Convert y herramientas
 
 **Ayuda → Actualizaciones** muestra la versión instalada, la disponible y el
@@ -396,6 +417,11 @@ Esta versión requiere validación antes de distribuirse:
     la cancelación de una descarga y el reinicio de Convert con una cola pendiente.
     Revisar la copia anterior y la recuperación ante un paquete incompleto o un
     destino sin permisos antes de distribuir el gestor.
+14. Sin preferencia de idioma guardada, comprobar el arranque en inglés.
+    En Preferences elegir Castellano, guardar y volver a abrir: revisar menús,
+    tabla, audio, Acerca de, registro y actualizaciones. Volver a English y repetir.
+    Cancelar un cambio de idioma debe mantener la elección anterior; rutas y
+    formatos deben conservarse en ambos idiomas.
 
 Se ha preparado el proyecto para Windows. No se ha validado en Linux; la
 cancelación de árboles de procesos está implementada específicamente para Windows.

@@ -1,3 +1,4 @@
+#include "i18n.h"
 #include "aboutdialog.h"
 #include <QCoreApplication>
 #include <QDateTime>
@@ -17,7 +18,7 @@
 AboutDialog::AboutDialog(QWidget *parent) : QDialog(parent)
 {
     setObjectName("ConvertAbout");
-    setWindowTitle("Acerca de Convert");
+    setWindowTitle(i18n::text("Acerca de Convert"));
     setWindowIcon(QIcon(":/convert.png"));
     setWindowFlags(Qt::Dialog | Qt::FramelessWindowHint);
     setMinimumSize(760, 350);
@@ -30,8 +31,8 @@ AboutDialog::AboutDialog(QWidget *parent) : QDialog(parent)
     auto *close = new QPushButton(QString::fromUtf8("×"));
     close->setObjectName("AboutClose");
     close->setFixedSize(28, 28);
-    close->setToolTip("Cerrar (Esc)");
-    close->setAccessibleName("Cerrar Acerca de Convert");
+    close->setToolTip(i18n::text("Cerrar (Esc)"));
+    close->setAccessibleName(i18n::text("Cerrar Acerca de Convert"));
     close->setAutoDefault(false);
     top->addWidget(close);
     outer->addLayout(top);
@@ -49,15 +50,15 @@ AboutDialog::AboutDialog(QWidget *parent) : QDialog(parent)
     auto *description = new QVBoxLayout;
     description->setSpacing(12);
     description->addStretch();
-    description->addWidget(text("Conversión de audio y vídeo.\nDescargas de YouTube y enlaces de Spotify.", "AboutDescription"));
+    description->addWidget(text(i18n::text("Conversión de audio y vídeo.\nDescargas de YouTube y enlaces de Spotify."), "AboutDescription"));
     description->addSpacing(8);
-    description->addWidget(text("Desarrollado por", "AboutMuted"));
+    description->addWidget(text(i18n::text("Desarrollado por"), "AboutMuted"));
     description->addWidget(text("Victor Algaba", "AboutAuthor"));
     description->addStretch();
     auto *website = text("<a href=\"https://www.radit.org\" style=\"color:#80A4AE;text-decoration:none\">www.radit.org</a>", "AboutWebsite");
     website->setOpenExternalLinks(true);
     description->addWidget(website);
-    description->addWidget(text("Identidad visual de la familia Radit", "AboutMuted"));
+    description->addWidget(text(i18n::text("Identidad visual de la familia Radit"), "AboutMuted"));
     columns->addLayout(description, 1);
 
     auto *identity = new QVBoxLayout;
@@ -66,27 +67,27 @@ AboutDialog::AboutDialog(QWidget *parent) : QDialog(parent)
     auto *logo = text({}, "AboutLogo");
     logo->setFixedSize(190, 190);
     logo->setPixmap(QIcon(":/convert.png").pixmap(QSize(190, 190), devicePixelRatioF()));
-    logo->setAccessibleName("Logotipo de Convert: letra C");
+    logo->setAccessibleName(i18n::text("Logotipo de Convert: letra C"));
     identity->addWidget(logo, 0, Qt::AlignHCenter);
     identity->addWidget(text("convert", "AboutName"));
     identity->addStretch();
-    identity->addWidget(text("Versión " + QCoreApplication::applicationVersion(), "AboutVersion"));
+    identity->addWidget(text(i18n::text("Versión ") + QCoreApplication::applicationVersion(), "AboutVersion"));
     columns->addLayout(identity, 1);
 
     auto *credits = new QVBoxLayout;
     credits->setSpacing(7);
     credits->addStretch();
     for (const auto &item : QList<QPair<QString, QString>>{
-             {"Conversión de audio y vídeo", "FFmpeg"},
-             {"Descargas de YouTube", "yt-dlp"},
-             {"Enlaces y metadatos de Spotify", "spotDL"},
-             {"Interfaz de escritorio", "Qt / C++"}}) {
+             {i18n::text("Conversión de audio y vídeo"), "FFmpeg"},
+             {i18n::text("Descargas de YouTube"), "yt-dlp"},
+             {i18n::text("Enlaces y metadatos de Spotify"), "spotDL"},
+             {i18n::text("Interfaz de escritorio"), "Qt / C++"}}) {
         credits->addWidget(text(item.first, "AboutMuted"));
         credits->addWidget(text(item.second, "AboutCredits"));
         credits->addSpacing(4);
     }
     const auto build = QFileInfo(QCoreApplication::applicationFilePath()).lastModified();
-    if (build.isValid()) credits->addWidget(text("Compilación: " + build.toString("dd/MM/yyyy HH:mm"), "AboutVersion"));
+    if (build.isValid()) credits->addWidget(text(i18n::text("Compilación: ") + build.toString("dd/MM/yyyy HH:mm"), "AboutVersion"));
     credits->addStretch();
     credits->addWidget(text(QString::fromUtf8("© %1 Victor Algaba").arg(QDate::currentDate().year()), "AboutCopyright"));
     columns->addLayout(credits, 1);

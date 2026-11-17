@@ -1,3 +1,4 @@
+#include "i18n.h"
 #include "mainwindow.h"
 #include "aboutdialog.h"
 #include "updates.h"
@@ -67,7 +68,7 @@ bool editAudio(QWidget *parent, const QString &format, AudioOptions *options)
 {
     const auto current = normalizedAudio(format, *options);
     QDialog dialog(parent);
-    dialog.setWindowTitle("Opciones de audio · " + format.toUpper());
+    dialog.setWindowTitle(i18n::text("Opciones de audio · ") + format.toUpper());
     auto *layout = new QVBoxLayout(&dialog);
     auto *form = new QFormLayout;
     auto *bitrate = new QComboBox;
@@ -75,9 +76,9 @@ bool editAudio(QWidget *parent, const QString &format, AudioOptions *options)
         bitrate->addItem(QString::number(value) + " kb/s", value);
     bitrate->setCurrentIndex(bitrate->findData(current.bitrate));
     bitrate->setEnabled(format != "wav" && format != "flac");
-    form->addRow("Tasa de bits", bitrate);
+    form->addRow(i18n::text("Tasa de bits"), bitrate);
     auto *rate = new QComboBox;
-    if (format != "opus") rate->addItem("Automática", 0);
+    if (format != "opus") rate->addItem(i18n::text("Automática"), 0);
     for (int value : {32000, 44100, 48000, 88200, 96000}) {
         if (format == "mp3" && value > 48000) continue;
         if (format == "opus" && value != 48000) continue;
@@ -85,13 +86,13 @@ bool editAudio(QWidget *parent, const QString &format, AudioOptions *options)
     }
     rate->setCurrentIndex(rate->findData(current.sampleRate));
     rate->setEnabled(format != "opus");
-    form->addRow("Frecuencia de muestreo", rate);
+    form->addRow(i18n::text("Frecuencia de muestreo"), rate);
     auto *channels = new QComboBox;
-    channels->addItem("Conservar originales", 0);
+    channels->addItem(i18n::text("Conservar originales"), 0);
     channels->addItem("Mono", 1);
-    channels->addItem("Estéreo", 2);
+    channels->addItem(i18n::text("Estéreo"), 2);
     channels->setCurrentIndex(channels->findData(current.channels));
-    form->addRow("Canales", channels);
+    form->addRow(i18n::text("Canales"), channels);
     auto *depth = new QComboBox;
     for (int value : {16, 24, 32}) {
         if (format == "flac" && value == 32) continue;
@@ -99,15 +100,14 @@ bool editAudio(QWidget *parent, const QString &format, AudioOptions *options)
     }
     depth->setCurrentIndex(depth->findData(current.bitDepth));
     depth->setEnabled(format == "wav" || format == "flac");
-    form->addRow("Profundidad de bits", depth);
+    form->addRow(i18n::text("Profundidad de bits"), depth);
     layout->addLayout(form);
-    auto *info = new QLabel("MP3: la calidad se ajusta con la tasa de bits. WAV y FLAC permiten elegir la profundidad.\n"
-                           "Aumentar estos valores no recupera calidad perdida en el archivo original.");
+    auto *info = new QLabel(i18n::text("MP3: la calidad se ajusta con la tasa de bits. WAV y FLAC permiten elegir la profundidad.\nAumentar estos valores no recupera calidad perdida en el archivo original."));
     info->setWordWrap(true);
     layout->addWidget(info);
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Save | QDialogButtonBox::Cancel);
-    buttons->button(QDialogButtonBox::Save)->setText("Guardar");
-    buttons->button(QDialogButtonBox::Cancel)->setText("Cancelar");
+    buttons->button(QDialogButtonBox::Save)->setText(i18n::text("Guardar"));
+    buttons->button(QDialogButtonBox::Cancel)->setText(i18n::text("Cancelar"));
     layout->addWidget(buttons);
     QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
     QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
@@ -155,7 +155,7 @@ public:
 
 MainWindow::MainWindow()
 {
-    setWindowTitle("Convert · Audio y vídeo");
+    setWindowTitle(i18n::text("Convert · Audio y vídeo"));
     setObjectName("ConvertWindow");
     setWindowIcon(QIcon(":/convert.png"));
     resize(1180, 760);
@@ -165,18 +165,18 @@ MainWindow::MainWindow()
     m_runner = new Runner(m_model, this);
     m_updates = new UpdateManager([this] { return m_runner->busy(); }, this);
 
-    auto *fileMenu = menuBar()->addMenu("&Archivo");
-    m_paste = new QAction("Pegar en la lista", this);
+    auto *fileMenu = menuBar()->addMenu(i18n::text("&Archivo"));
+    m_paste = new QAction(i18n::text("Pegar en la lista"), this);
     m_paste->setShortcuts(QKeySequence::Paste);
     m_paste->setShortcutContext(Qt::WidgetWithChildrenShortcut);
     fileMenu->addAction(m_paste);
     fileMenu->addSeparator();
-    fileMenu->addAction("Salir", QKeySequence::Quit, this, &QWidget::close);
-    m_preferences = menuBar()->addAction("Preferencias…", this, &MainWindow::preferences);
-    auto *helpMenu = menuBar()->addMenu("Ayuda");
-    m_updateAction = helpMenu->addAction("Actualizaciones…", this, &MainWindow::showUpdates);
+    fileMenu->addAction(i18n::text("Salir"), QKeySequence::Quit, this, &QWidget::close);
+    m_preferences = menuBar()->addAction(i18n::text("Preferencias…"), this, &MainWindow::preferences);
+    auto *helpMenu = menuBar()->addMenu(i18n::text("Ayuda"));
+    m_updateAction = helpMenu->addAction(i18n::text("Actualizaciones…"), this, &MainWindow::showUpdates);
     helpMenu->addSeparator();
-    helpMenu->addAction("Acerca de Convert", this, [this] {
+    helpMenu->addAction(i18n::text("Acerca de Convert"), this, [this] {
         AboutDialog dialog(this);
         dialog.exec();
     });
@@ -198,7 +198,7 @@ MainWindow::MainWindow()
     auto *title = new QLabel("convert");
     title->setObjectName("title");
     brandText->addWidget(title);
-    brandText->addWidget(new QLabel("Conversión de audio y vídeo · Descargas"));
+    brandText->addWidget(new QLabel(i18n::text("Conversión de audio y vídeo · Descargas")));
     brand->addLayout(brandText);
     brand->addStretch();
     layout->addLayout(brand);
@@ -208,7 +208,7 @@ MainWindow::MainWindow()
     auto *outputLayout = new QVBoxLayout(outputBox);
     outputLayout->setContentsMargins(0, 0, 0, 0);
     outputLayout->setSpacing(0);
-    auto *outputTitle = new QLabel("Formato y carpeta de descargas");
+    auto *outputTitle = new QLabel(i18n::text("Formato y carpeta de descargas"));
     outputTitle->setObjectName("PanelTitle");
     outputLayout->addWidget(outputTitle);
     auto *outputContent = new QWidget;
@@ -237,21 +237,20 @@ MainWindow::MainWindow()
     m_destination = new QLineEdit(savedDestination.trimmed().isEmpty()
         ? QDir::toNativeSeparators(QDir(QCoreApplication::applicationDirPath()).filePath("salida"))
         : savedDestination);
-    m_destination->setToolTip("Destino de los enlaces y de cualquier entrada a la que pulses Aplicar a selección. Los archivos nuevos usan su carpeta de origen.");
-    auto *browse = new QPushButton("Examinar…");
-    auto *apply = new QPushButton("Aplicar a selección");
-    apply->setToolTip("Aplica el formato, las opciones de audio y la carpeta Salida URL a todas las entradas seleccionadas, incluidos los archivos locales.");
-    outputRow->addWidget(new QLabel("Formato"));
+    m_destination->setToolTip(i18n::text("Destino de los enlaces y de cualquier entrada a la que pulses Aplicar a selección. Los archivos nuevos usan su carpeta de origen."));
+    auto *browse = new QPushButton(i18n::text("Examinar…"));
+    auto *apply = new QPushButton(i18n::text("Aplicar a selección"));
+    apply->setToolTip(i18n::text("Aplica el formato, las opciones de audio y la carpeta Salida URL a todas las entradas seleccionadas, incluidos los archivos locales."));
+    outputRow->addWidget(new QLabel(i18n::text("Formato")));
     outputRow->addWidget(m_format);
     outputRow->addWidget(audio);
     outputRow->addSpacing(12);
-    outputRow->addWidget(new QLabel("Salida URL"));
+    outputRow->addWidget(new QLabel(i18n::text("Salida URL")));
     outputRow->addWidget(m_destination, 1);
     outputRow->addWidget(browse);
     outputRow->addWidget(apply);
     layout->addWidget(outputBox);
-    auto *instructions = new QLabel("Arrastra archivos o pega enlaces con Ctrl+V. Pulsa el formato de una fila para cambiarlo.\n"
-                                   "Archivos: carpeta de origen. Enlaces: carpeta de descargas. Los completados salen de la lista.");
+    auto *instructions = new QLabel(i18n::text("Arrastra archivos o pega enlaces con Ctrl+V. Pulsa el formato de una fila para cambiarlo.\nArchivos: carpeta de origen. Enlaces: carpeta de descargas. Los completados salen de la lista."));
     instructions->setWordWrap(true);
     layout->addWidget(instructions);
 
@@ -267,8 +266,8 @@ MainWindow::MainWindow()
     });
     m_table->setAlternatingRowColors(true);
     m_table->setWordWrap(false);
-    m_table->setAccessibleName("Lista de archivos y enlaces");
-    m_table->setToolTip("Arrastra archivos o pulsa Ctrl+V para pegar enlaces. También puedes usar el menú del botón derecho.");
+    m_table->setAccessibleName(i18n::text("Lista de archivos y enlaces"));
+    m_table->setToolTip(i18n::text("Arrastra archivos o pulsa Ctrl+V para pegar enlaces. También puedes usar el menú del botón derecho."));
     m_table->addAction(m_paste);
     m_table->setContextMenuPolicy(Qt::CustomContextMenu);
     m_table->verticalHeader()->show();
@@ -282,7 +281,7 @@ MainWindow::MainWindow()
     m_table->setAcceptDrops(true);
     m_table->viewport()->setAcceptDrops(true);
     m_table->viewport()->installEventFilter(this);
-    m_emptyHint = new QLabel("Arrastra aquí tus archivos\no pega una URL de YouTube o Spotify\nCtrl+V · Botón derecho → Pegar", m_table->viewport());
+    m_emptyHint = new QLabel(i18n::text("Arrastra aquí tus archivos\no pega una URL de YouTube o Spotify\nCtrl+V · Botón derecho → Pegar"), m_table->viewport());
     m_emptyHint->setObjectName("ListEmptyHint");
     m_emptyHint->setAlignment(Qt::AlignCenter);
     m_emptyHint->setWordWrap(true);
@@ -292,17 +291,17 @@ MainWindow::MainWindow()
     m_log = new QPlainTextEdit;
     m_log->setReadOnly(true);
     m_log->setMaximumBlockCount(1800);
-    m_log->setPlaceholderText("Registro de actividad. Los errores de las herramientas aparecerán aquí.");
+    m_log->setPlaceholderText(i18n::text("Registro de actividad. Los errores de las herramientas aparecerán aquí."));
     auto *logPanel = new QWidget;
     auto *logLayout = new QVBoxLayout(logPanel);
     logLayout->setContentsMargins(0, 0, 0, 0);
     logLayout->setSpacing(4);
     auto *logHeader = new QHBoxLayout;
-    auto *logTitle = new QLabel("Registro de actividad");
+    auto *logTitle = new QLabel(i18n::text("Registro de actividad"));
     logTitle->setObjectName("PanelTitle");
-    auto *clearLogButton = new QPushButton("Borrar registro");
-    clearLogButton->setToolTip("Vacía el registro mostrado. Los nuevos mensajes seguirán apareciendo.");
-    auto *clearLog = new QAction("Borrar registro", m_log);
+    auto *clearLogButton = new QPushButton(i18n::text("Borrar registro"));
+    clearLogButton->setToolTip(i18n::text("Vacía el registro mostrado. Los nuevos mensajes seguirán apareciendo."));
+    auto *clearLog = new QAction(i18n::text("Borrar registro"), m_log);
     clearLog->setEnabled(false);
     clearLogButton->setEnabled(false);
     connect(clearLog, &QAction::triggered, m_log, &QPlainTextEdit::clear);
@@ -331,12 +330,12 @@ MainWindow::MainWindow()
     layout->addWidget(splitter, 1);
 
     auto *actions = new QHBoxLayout;
-    auto *remove = new QPushButton("Quitar selección");
-    auto *retry = new QPushButton("Reintentar selección");
-    auto *open = new QPushButton("Abrir destino");
-    m_start = new QPushButton("Iniciar cola");
+    auto *remove = new QPushButton(i18n::text("Quitar selección"));
+    auto *retry = new QPushButton(i18n::text("Reintentar selección"));
+    auto *open = new QPushButton(i18n::text("Abrir destino"));
+    m_start = new QPushButton(i18n::text("Iniciar cola"));
     m_start->setObjectName("primary");
-    m_stop = new QPushButton("Detener cola");
+    m_stop = new QPushButton(i18n::text("Detener cola"));
     m_stop->setEnabled(false);
     for (auto *button : {remove, retry, open}) actions->addWidget(button);
     actions->addStretch();
@@ -348,7 +347,7 @@ MainWindow::MainWindow()
     m_progress->setMaximumWidth(220);
     statusBar()->addWidget(m_summary, 1);
     statusBar()->addPermanentWidget(m_progress);
-    m_updateNotice = new QPushButton("Actualizaciones");
+    m_updateNotice = new QPushButton(i18n::text("Actualizaciones"));
     m_updateNotice->setVisible(false);
     statusBar()->addPermanentWidget(m_updateNotice);
     connect(m_updateNotice, &QPushButton::clicked, this, &MainWindow::showUpdates);
@@ -361,18 +360,18 @@ MainWindow::MainWindow()
         QMenu menu(this);
         menu.addAction(m_paste);
         menu.addSeparator();
-        auto *audioOptions = menu.addAction("Opciones de audio…");
+        auto *audioOptions = menu.addAction(i18n::text("Opciones de audio…"));
         const auto rows = selectedRows();
         bool audioSelection = !rows.isEmpty();
         for (int row : rows) audioSelection &= isAudio(m_model->jobs[row].format);
         audioOptions->setEnabled(!queueBusy() && audioSelection);
         connect(audioOptions, &QAction::triggered, this, &MainWindow::changeSelectedAudio);
-        auto *changeDestination = menu.addAction("Cambiar carpeta de salida…");
+        auto *changeDestination = menu.addAction(i18n::text("Cambiar carpeta de salida…"));
         changeDestination->setEnabled(!queueBusy() && !selectedRows().isEmpty());
         connect(changeDestination, &QAction::triggered, this, &MainWindow::changeSelectedDestination);
         menu.addSeparator();
-        auto *clearList = menu.addAction("Borrar lista");
-        clearList->setToolTip("Quita todas las entradas de la cola. Conserva los archivos del disco.");
+        auto *clearList = menu.addAction(i18n::text("Borrar lista"));
+        clearList->setToolTip(i18n::text("Quita todas las entradas de la cola. Conserva los archivos del disco."));
         clearList->setEnabled(!queueBusy() && m_model->rowCount() > 0);
         connect(clearList, &QAction::triggered, this, [this] {
             if (queueBusy()) return;
@@ -383,7 +382,7 @@ MainWindow::MainWindow()
         menu.exec(m_table->viewport()->mapToGlobal(position));
     });
     connect(browse, &QPushButton::clicked, this, [this] {
-        const auto dir = QFileDialog::getExistingDirectory(this, "Carpeta de salida", m_destination->text());
+        const auto dir = QFileDialog::getExistingDirectory(this, i18n::text("Carpeta de salida"), m_destination->text());
         if (!dir.isEmpty()) m_destination->setText(dir);
     });
     connect(apply, &QPushButton::clicked, this, [this] {
@@ -393,13 +392,13 @@ MainWindow::MainWindow()
             const auto &j = m_model->jobs[row];
             if (j.state == State::Done) continue;
             if (j.kind == Source::Spotify && !isAudio(m_format->currentText())) {
-                QMessageBox::information(this, "Formato de Spotify", "Selecciona un formato de audio para las entradas de Spotify.");
+                QMessageBox::information(this, i18n::text("Formato de Spotify"), i18n::text("Selecciona un formato de audio para las entradas de Spotify."));
                 return;
             }
         }
         const auto destination = outputDirectory(m_destination->text());
         if (destination.isEmpty()) {
-            QMessageBox::information(this, "Destino", "Selecciona una carpeta en Salida URL."); return;
+            QMessageBox::information(this, i18n::text("Destino"), i18n::text("Selecciona una carpeta en Salida URL.")); return;
         }
         for (int row : rows) {
             auto &j = m_model->jobs[row];
@@ -445,14 +444,14 @@ MainWindow::MainWindow()
     connect(m_runner, &Runner::log, m_log, &QPlainTextEdit::appendPlainText);
     connect(m_updates, &UpdateManager::log, m_log, &QPlainTextEdit::appendPlainText);
     connect(m_updates, &UpdateManager::installationReport, this, [this](const QString &message, bool failed) {
-        if (failed) QMessageBox::warning(this, "Actualización de Convert", message);
+        if (failed) QMessageBox::warning(this, i18n::text("Actualización de Convert"), message);
         else statusBar()->showMessage(message, 15000);
     });
     connect(m_updates, &UpdateManager::available, this, [this](int count) {
         m_updateNotice->setVisible(count > 0);
-        m_updateNotice->setText(QStringLiteral("Actualizaciones (%1)").arg(count));
-        m_updateAction->setText(count > 0 ? QStringLiteral("Actualizaciones (%1 disponibles)…").arg(count)
-                                       : QStringLiteral("Actualizaciones…"));
+        m_updateNotice->setText(i18n::text("Actualizaciones (%1)").arg(count));
+        m_updateAction->setText(count > 0 ? i18n::text("Actualizaciones (%1 disponibles)…").arg(count)
+                                       : i18n::text("Actualizaciones…"));
     });
     connect(m_updates, &UpdateManager::installationChanged, this, [this](bool active) {
         m_updateInstalling = active;
@@ -476,7 +475,7 @@ MainWindow::MainWindow()
     updateSummary();
     updatePasteAction();
     m_table->setFocus();
-    m_log->appendPlainText("Preparado. Arrastra archivos a la lista o pega enlaces con Ctrl+V.");
+    m_log->appendPlainText(i18n::text("Preparado. Arrastra archivos a la lista o pega enlaces con Ctrl+V."));
     QTimer::singleShot(3000, m_updates, &UpdateManager::checkAutomatically);
 }
 
@@ -495,7 +494,7 @@ void MainWindow::showUpdates()
     m_updateDialog->show();
     m_updateDialog->raise();
     m_updateDialog->activateWindow();
-    if (!m_updates->busy() && m_updates->items().first().status == QStringLiteral("Sin comprobar")) m_updates->check();
+    if (!m_updates->busy() && m_updates->items().first().status == i18n::text("Sin comprobar")) m_updates->check();
 }
 
 QList<int> MainWindow::selectedRows() const
@@ -510,7 +509,7 @@ void MainWindow::addFiles(const QStringList &files)
     if (queueBusy()) return;
     for (const auto &file : files) {
         const QFileInfo info(file);
-        if (!info.isFile()) { m_log->appendPlainText("Omitido (no es un archivo): " + file); continue; }
+        if (!info.isFile()) { m_log->appendPlainText(i18n::text("Omitido (no es un archivo): ") + file); continue; }
         Job j;
         j.source = info.absoluteFilePath(); j.format = m_format->currentText();
         j.audio = m_audio;
@@ -523,12 +522,12 @@ void MainWindow::addFiles(const QStringList &files)
 bool MainWindow::addUrl(const QString &text, QString *error)
 {
     Source source;
-    if (!classifyUrl(text, &source)) { *error = "URL no admitida: " + text; return false; }
+    if (!classifyUrl(text, &source)) { *error = i18n::text("URL no admitida: ") + text; return false; }
     if (source == Source::Spotify && !isAudio(m_format->currentText())) {
-        *error = "Spotify requiere MP3, WAV, FLAC, M4A, OPUS u OGG."; return false;
+        *error = i18n::text("Spotify requiere MP3, WAV, FLAC, M4A, OPUS u OGG."); return false;
     }
     const auto destination = outputDirectory(m_destination->text());
-    if (destination.isEmpty()) { *error = "Selecciona una carpeta de salida."; return false; }
+    if (destination.isEmpty()) { *error = i18n::text("Selecciona una carpeta de salida."); return false; }
     Job j;
     j.source = text; j.kind = source; j.format = m_format->currentText();
     j.audio = m_audio;
@@ -556,7 +555,7 @@ void MainWindow::changeSelectedDestination()
     const auto rows = selectedRows();
     if (rows.isEmpty()) return;
     const auto initial = m_model->jobs[rows.first()].destination;
-    const auto folder = QFileDialog::getExistingDirectory(this, "Cambiar carpeta de salida", initial);
+    const auto folder = QFileDialog::getExistingDirectory(this, i18n::text("Cambiar carpeta de salida"), initial);
     if (folder.isEmpty()) return;
     for (int row : rows) {
         auto &job = m_model->jobs[row];
@@ -579,7 +578,7 @@ void MainWindow::changeSelectedAudio()
     const auto format = m_model->jobs[rows.first()].format;
     for (int row : rows) {
         if (m_model->jobs[row].format != format) {
-            QMessageBox::information(this, "Opciones de audio", "Selecciona entradas con el mismo formato de audio.");
+            QMessageBox::information(this, i18n::text("Opciones de audio"), i18n::text("Selecciona entradas con el mismo formato de audio."));
             return;
         }
     }
@@ -618,7 +617,7 @@ void MainWindow::handleDrop(const QMimeData *data)
     } else links = data->text().split(QRegularExpression("\\s+"), Qt::SkipEmptyParts);
     if (!files.isEmpty()) addFiles(files);
     for (const auto &link : links) { QString error; if (!addUrl(link, &error)) errors << error; }
-    if (!errors.isEmpty()) QMessageBox::information(this, "Elementos omitidos", errors.join('\n'));
+    if (!errors.isEmpty()) QMessageBox::information(this, i18n::text("Elementos omitidos"), errors.join('\n'));
     saveQueue();
 }
 
@@ -671,7 +670,7 @@ void MainWindow::updateSummary()
         failed += j.state == State::Failed;
         if (j.state == State::Running) current = j.progress;
     }
-    m_summary->setText(QStringLiteral("%1 en lista · %2 pendientes · %3 completadas · %4 errores · %5 total")
+    m_summary->setText(i18n::text("%1 en lista · %2 pendientes · %3 completadas · %4 errores · %5 total")
         .arg(m_model->jobs.size()).arg(pending).arg(done).arg(failed).arg(m_model->jobs.size() + done));
     m_start->setEnabled(!queueBusy() && pending > 0);
     m_progress->setRange(0, current < 0 ? 0 : 100);
@@ -681,57 +680,69 @@ void MainWindow::updateSummary()
 void MainWindow::preferences()
 {
     QDialog dialog(this);
-    dialog.setWindowTitle("Preferencias · Herramientas");
+    dialog.setWindowTitle(i18n::text("Preferencias · Convert"));
     auto *layout = new QVBoxLayout(&dialog);
-    auto *intro = new QLabel("Selecciona ejecutables o deja el campo vacío para buscar primero en la carpeta tools junto a Convert.\n"
-                            "Después se busca en bin, ffmpeg, junto al programa y en PATH.\n"
-                            "FFmpeg es obligatorio. ffprobe permite calcular el progreso de conversión.\n"
-                            "Deno proporciona el motor JavaScript que necesita yt-dlp para YouTube.");
+    auto *intro = new QLabel(i18n::text("Selecciona ejecutables o deja el campo vacío para buscar primero en la carpeta tools junto a Convert.\nDespués se busca en bin, ffmpeg, junto al programa y en PATH.\nFFmpeg es obligatorio. ffprobe permite calcular el progreso de conversión.\nDeno proporciona el motor JavaScript que necesita yt-dlp para YouTube."));
     intro->setWordWrap(true);
     layout->addWidget(intro);
     auto *form = new QFormLayout;
     QMap<QString, QLineEdit *> entries;
+    auto *language = new QComboBox;
+    language->addItem("English", "en");
+    language->addItem("Castellano", "es");
+    const QString previousLanguage = QSettings().value("interface/language", "en").toString() == "es" ? "es" : "en";
+    language->setCurrentIndex(language->findData(previousLanguage));
+    language->setToolTip(i18n::text("El cambio de idioma se aplicará al volver a abrir Convert."));
+    form->addRow("Language / Idioma", language);
+    auto *languageInfo = new QLabel(i18n::text("El cambio de idioma se aplicará al volver a abrir Convert."));
+    languageInfo->setWordWrap(true);
+    form->addRow(languageInfo);
     for (const auto &name : QStringList{"ffmpeg", "ffprobe", "yt-dlp", "spotdl", "deno"}) {
         const auto detected = toolPath(name); // Also migrates an old local bin path.
         auto *row = new QHBoxLayout;
         auto *edit = new QLineEdit(QSettings().value("tools/" + name).toString());
-        edit->setPlaceholderText(detected.isEmpty() ? "No encontrado" : detected);
+        edit->setPlaceholderText(detected.isEmpty() ? i18n::text("No encontrado") : detected);
         edit->setMinimumWidth(400);
-        auto *browse = new QPushButton("Examinar…");
+        auto *browse = new QPushButton(i18n::text("Examinar…"));
         row->addWidget(edit); row->addWidget(browse);
         form->addRow(name, row); entries.insert(name, edit);
         connect(browse, &QPushButton::clicked, &dialog, [&dialog, edit] {
-            const auto path = QFileDialog::getOpenFileName(&dialog, "Seleccionar ejecutable", edit->text());
+            const auto path = QFileDialog::getOpenFileName(&dialog, i18n::text("Seleccionar ejecutable"), edit->text());
             if (!path.isEmpty()) edit->setText(path);
         });
     }
     layout->addLayout(form);
-    auto *rememberQueue = new QCheckBox("Recordar la cola entre sesiones");
+    auto *rememberQueue = new QCheckBox(i18n::text("Recordar la cola entre sesiones"));
     rememberQueue->setChecked(QSettings().value("session/rememberQueue", false).toBool());
-    rememberQueue->setToolTip("Desactivado: Convert siempre abre con la lista vacía. Las rutas y el formato se conservan.");
+    rememberQueue->setToolTip(i18n::text("Desactivado: Convert siempre abre con la lista vacía. Las rutas y el formato se conservan."));
     layout->addWidget(rememberQueue);
-    auto *info = new QLabel("Spotify utiliza spotDL como herramienta externa; el audio procede de YouTube.\n"
-                           "Las descargas pueden depender de disponibilidad, autenticación y cambios del servicio.");
+    auto *info = new QLabel(i18n::text("Spotify utiliza spotDL como herramienta externa; el audio procede de YouTube.\nLas descargas pueden depender de disponibilidad, autenticación y cambios del servicio."));
     info->setWordWrap(true); layout->addWidget(info);
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Save | QDialogButtonBox::Cancel);
-    buttons->button(QDialogButtonBox::Save)->setText("Guardar");
-    buttons->button(QDialogButtonBox::Cancel)->setText("Cancelar");
+    buttons->button(QDialogButtonBox::Save)->setText(i18n::text("Guardar"));
+    buttons->button(QDialogButtonBox::Cancel)->setText(i18n::text("Cancelar"));
     layout->addWidget(buttons);
     connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-    connect(buttons, &QDialogButtonBox::accepted, &dialog, [&dialog, entries, rememberQueue] {
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, [&dialog, entries, rememberQueue, language] {
         for (auto it = entries.cbegin(); it != entries.cend(); ++it) {
             const auto path = it.value()->text().trimmed();
             if (!path.isEmpty() && (!QFileInfo(path).isFile() || !QFileInfo(path).isExecutable())) {
-                QMessageBox::warning(&dialog, "Ruta incorrecta", "Revisa el ejecutable de " + it.key()); return;
+                QMessageBox::warning(&dialog, i18n::text("Ruta incorrecta"), i18n::text("Revisa el ejecutable de ") + it.key()); return;
             }
         }
         QSettings settings;
         for (auto it = entries.cbegin(); it != entries.cend(); ++it)
             settings.setValue("tools/" + it.key(), it.value()->text().trimmed());
         settings.setValue("session/rememberQueue", rememberQueue->isChecked());
+        settings.setValue("interface/language", language->currentData().toString());
         dialog.accept();
     });
-    if (dialog.exec() == QDialog::Accepted) saveQueue();
+    if (dialog.exec() == QDialog::Accepted) {
+        saveQueue();
+        if (language->currentData().toString() != previousLanguage)
+            QMessageBox::information(this, i18n::text("Idioma guardado"),
+                i18n::text("Idioma guardado. Cierra y vuelve a abrir Convert para aplicarlo."));
+    }
 }
 
 void MainWindow::saveQueue()
@@ -799,13 +810,13 @@ void MainWindow::restoreQueue()
 void MainWindow::closeEvent(QCloseEvent *event)
 {
     if (m_updateInstalling && !m_restartForUpdate) {
-        QMessageBox::information(this, "Actualización en curso", "Termina o cancela la actualización desde Ayuda > Actualizaciones antes de cerrar.");
+        QMessageBox::information(this, i18n::text("Actualización en curso"), i18n::text("Termina o cancela la actualización desde Ayuda > Actualizaciones antes de cerrar."));
         event->ignore();
         return;
     }
     if (m_runner->busy()) {
-        const auto answer = QMessageBox::question(this, "Trabajo en curso",
-            "¿Detener la cola y cerrar? Las descargas parciales permanecerán en su carpeta.",
+        const auto answer = QMessageBox::question(this, i18n::text("Trabajo en curso"),
+            i18n::text("¿Detener la cola y cerrar? Las descargas parciales permanecerán en su carpeta."),
             QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
         event->ignore();
         if (answer == QMessageBox::Yes) { m_closeAfterCancel = true; m_runner->cancel(); }

@@ -9,7 +9,8 @@ find_package(Qt6 6.7 REQUIRED COMPONENTS Widgets Network)
 qt_add_executable(convert WIN32
     svn/main.cpp svn/mainwindow.cpp svn/mainwindow.h
     svn/jobs.cpp svn/jobs.h svn/runner.cpp svn/runner.h
-    svn/aboutdialog.cpp svn/aboutdialog.h svn/updates.cpp svn/updates.h svn/resources.qrc)
+    svn/aboutdialog.cpp svn/aboutdialog.h svn/updates.cpp svn/updates.h
+    svn/i18n.cpp svn/i18n.h svn/resources.qrc)
 if(WIN32)
     enable_language(RC)
     target_sources(convert PRIVATE svn/convert.rc)
