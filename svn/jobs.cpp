@@ -71,14 +71,30 @@ QString outputDirectory(const QString &text)
 
 QString toolPath(const QString &name)
 {
-    const auto configured = QSettings().value("tools/" + name).toString();
-    if (!configured.isEmpty()) return configured;
+    QSettings settings;
+    const auto configured = settings.value("tools/" + name).toString();
     QString executable = name;
 #ifdef Q_OS_WIN
     executable += ".exe";
 #endif
     const QDir base(QCoreApplication::applicationDirPath());
-    for (const auto &folder : QStringList{"bin", "ffmpeg", "tools", "."}) {
+    if (!configured.isEmpty()) {
+        const auto oldPath = QDir::cleanPath(base.filePath("bin/" + executable));
+        const auto newPath = base.filePath("tools/" + executable);
+        const auto configuredPath = QDir::cleanPath(QFileInfo(configured).absoluteFilePath());
+#ifdef Q_OS_WIN
+        constexpr auto pathCase = Qt::CaseInsensitive;
+#else
+        constexpr auto pathCase = Qt::CaseSensitive;
+#endif
+        if (!QFileInfo(configured).isFile() && configuredPath.compare(oldPath, pathCase) == 0
+            && QFileInfo(newPath).isFile()) {
+            settings.setValue("tools/" + name, newPath);
+            return newPath;
+        }
+        return configured;
+    }
+    for (const auto &folder : QStringList{"tools", "bin", "ffmpeg", "."}) {
         const auto candidate = base.filePath(folder + "/" + executable);
         if (QFileInfo(candidate).isFile()) return candidate;
     }
@@ -134,6 +150,7 @@ int JobModel::rowCount(const QModelIndex &p) const { return p.isValid() ? 0 : jo
 int JobModel::columnCount(const QModelIndex &p) const { return p.isValid() ? 0 : 6; }
 QVariant JobModel::headerData(int section, Qt::Orientation orientation, int role) const
 {
+    if (orientation == Qt::Vertical && role == Qt::DisplayRole) return section + 1;
     if (orientation != Qt::Horizontal || role != Qt::DisplayRole) return {};
     return QStringList{"Archivo / enlace", "Origen", "Formato", "Estado", "Progreso", "Destino"}.value(section);
 }

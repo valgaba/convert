@@ -4,5 +4,7 @@
         <file>convert.ico</file>
         <file>convert.png</file>
         <file>convert.svg</file>
+        <file>splashscreen.png</file>
+        <file>update-install.ps1</file>
     </qresource>
 </RCC>

@@ -2,6 +2,8 @@
 #include "jobs.h"
 #include <QProcess>
 #include <QTemporaryDir>
+#include <QSet>
+#include <QMap>
 #include <memory>
 #include <atomic>
 
@@ -27,7 +29,9 @@ private:
     void convertDownloadedAudio();
     void closeProcessTree();
     bool prepareProcessTemporaryDirectory();
-    void publishDownloads();
+    void publishDownloads(const QStringList &requested = {}, bool finalBatch = true);
+    void queueSpotifySong(const QString &line);
+    void copyNextSpotifySong();
     JobModel *m_model;
     QProcess *m_process = nullptr;
     int m_row = -1;
@@ -42,6 +46,12 @@ private:
     QString m_output, m_staged;
     QStringList m_downloadFiles;
     QString m_spotifyMetadata, m_spotifyErrors;
+    QStringList m_spotifyCopyQueue;
+    QSet<QString> m_spotifyQueued;
+    QMap<QString, QString> m_publishedDownloads;
+    bool m_spotifyCopyActive = false, m_spotifyFinishPending = false;
+    bool m_spotifyFinalSuccess = false;
+    QString m_spotifyFinalMessage, m_publicationError;
     std::unique_ptr<QTemporaryDir> m_runtimeTemp;
     std::unique_ptr<QTemporaryDir> m_downloadTemp;
     void *m_processTree = nullptr;

@@ -13,6 +13,7 @@
 #include <QTimer>
 #include <QSet>
 #include <QThread>
+#include <QCryptographicHash>
 #ifdef Q_OS_WIN
 #ifndef NOMINMAX
 #define NOMINMAX 1
@@ -90,6 +91,12 @@ void Runner::next()
     m_encodedDownload.clear();
     m_spotifyMetadata.clear();
     m_spotifyErrors.clear();
+    m_spotifyCopyQueue.clear();
+    m_spotifyQueued.clear();
+    m_publishedDownloads.clear();
+    m_spotifyCopyActive = m_spotifyFinishPending = false;
+    m_spotifyFinalMessage.clear();
+    m_publicationError.clear();
     m_downloadTemp.reset();
     j.destination = outputDirectory(j.destination);
     const auto displayDestination = QDir::toNativeSeparators(j.destination);
@@ -168,23 +175,32 @@ void Runner::next()
     j.result = j.destination;
     m_model->refresh(m_row);
     emit checkpoint();
+    const auto deno = toolPath("deno");
+    const bool hasDeno = !deno.isEmpty() && QFileInfo(deno).isExecutable();
+    if (hasDeno) emit log("Motor JavaScript: " + QDir::toNativeSeparators(deno));
     if (j.kind == Source::Spotify) {
         if (!isAudio(j.format)) { complete(false, "Spotify requiere un formato de audio."); return; }
         m_spotifyMetadata = QDir(m_runtimeTemp->path()).filePath("download.spotdl");
         m_spotifyErrors = QDir(m_runtimeTemp->path()).filePath("errors.txt");
-        execute(toolPath("spotdl"), {"download", j.source, "--format", j.format,
+        QStringList args{"download", j.source, "--format", j.format,
                 "--ffmpeg", ffmpeg, "--output",
-                "{track-id} - {artists} - {title}.{output-ext}",
+                "{track-id} - {artist} - {title}.{output-ext}",
                 "--bitrate", QString::number(normalizedAudio(j.format, j.audio).bitrate) + "k",
                 "--ffmpeg-args=" + audioArguments(j.format, j.audio).join(' '),
                 "--overwrite", "skip", "--threads", "1", "--restrict", "none",
                 "--simple-tui", "--print-errors", "--save-errors",
-                m_spotifyErrors, "--save-file", m_spotifyMetadata, "--no-cache"});
+                m_spotifyErrors, "--save-file", m_spotifyMetadata, "--no-cache"};
+        if (hasDeno)
+            args << "--yt-dlp-args=--js-runtimes \"deno:" + QDir::fromNativeSeparators(deno) + "\"";
+        execute(toolPath("spotdl"), args);
     } else {
+        if (isAudio(j.format))
+            emit log(QStringLiteral("YouTube: descargando el audio. La conversión a %1 comenzará al terminar la descarga de la entrada.")
+                     .arg(j.format.toUpper()));
         QStringList args{"--ignore-config", "--newline", "--progress", "--no-colors", "--no-overwrites",
                          "--windows-filenames", "--ffmpeg-location", QFileInfo(ffmpeg).absolutePath(),
                          "--progress-template", "download:CONVERT_PROGRESS:%(progress._percent_str)s",
-                         "--print", "after_move:CONVERT_FILE:%(filepath)j", "--no-simulate",
+                         "--print", "after_move:CONVERT_FILE:%(filepath)j", "--no-simulate", "--no-quiet",
                          "-P", folder, "-o", "%(title).160B [%(id)s].%(ext)s"};
         if (isAudio(j.format))
             args << "-f" << "bestaudio/best";
@@ -196,6 +212,7 @@ void Runner::next()
                  << "--merge-output-format" << "mp4" << "--recode-video" << "mp4";
         else args << "-f" << "bv+ba/b" << "--merge-output-format" << "mkv"
                   << "--remux-video" << "mkv";
+        if (hasDeno) args << "--js-runtimes" << "deno:" + deno;
         args << "--" << j.source;
         execute(toolPath("yt-dlp"), args);
     }
@@ -309,7 +326,7 @@ void Runner::execute(const QString &program, const QStringList &arguments, bool 
     }
 #endif
     QStringList dirs;
-    for (const auto &name : QStringList{"ffmpeg", "ffprobe", "yt-dlp"}) {
+    for (const auto &name : QStringList{"ffmpeg", "ffprobe", "yt-dlp", "deno"}) {
         const auto path = toolPath(name);
         if (!path.isEmpty()) dirs << QFileInfo(path).absolutePath();
     }
@@ -317,7 +334,12 @@ void Runner::execute(const QString &program, const QStringList &arguments, bool 
     dirs << env.value("PATH");
     env.insert("PATH", dirs.join(QDir::listSeparator()));
     env.insert("PYTHONIOENCODING", "utf-8");
+    env.insert("PYTHONUNBUFFERED", "1");
     env.insert("NO_COLOR", "1");
+    if (m_model->jobs[m_row].kind == Source::Spotify) {
+        // Keep the completed-song notification on one line, including long titles.
+        env.insert("COLUMNS", "10000");
+    }
     const auto runtimePath = QDir::toNativeSeparators(m_runtimeTemp->path());
     env.insert("TEMP", runtimePath);
     env.insert("TMP", runtimePath);
@@ -365,6 +387,7 @@ void Runner::execute(const QString &program, const QStringList &arguments, bool 
         m_process = nullptr;
         process->deleteLater();
         if (m_cancelled) { complete(false, "Cancelado por el usuario."); return; }
+        if (!m_publicationError.isEmpty()) { complete(false, m_publicationError); return; }
         if (m_probe) {
             m_duration = QJsonDocument::fromJson(m_probeData).object().value("format")
                              .toObject().value("duration").toString().toDouble();
@@ -417,12 +440,16 @@ void Runner::execute(const QString &program, const QStringList &arguments, bool 
                     if (QRegularExpression("^[A-Za-z0-9]{22}$").match(id).hasMatch()) ids.insert(id);
                     else metadataValid = false;
                 }
-                const auto files = QDir(m_downloadTemp->path()).entryInfoList({"*." + j.format}, QDir::Files);
+                QStringList files = m_publishedDownloads.keys();
+                for (const auto &file : QDir(m_downloadTemp->path()).entryInfoList({"*." + j.format}, QDir::Files))
+                    if (!files.contains(file.absoluteFilePath())) files << file.absoluteFilePath();
                 for (const auto &id : ids) {
                     const QString prefix = id + " - ";
-                    for (const auto &file : files) {
-                        if (file.fileName().startsWith(prefix) && file.size() > 0) {
-                            m_downloadFiles << file.absoluteFilePath();
+                    for (const auto &path : files) {
+                        const QFileInfo file(path);
+                        if (file.fileName().startsWith(prefix) &&
+                            (m_publishedDownloads.contains(path) || file.size() > 0)) {
+                            m_downloadFiles << path;
                             break;
                         }
                     }
@@ -433,6 +460,7 @@ void Runner::execute(const QString &program, const QStringList &arguments, bool 
             }
             bool valid = !m_downloadFiles.isEmpty();
             for (const auto &path : m_downloadFiles) {
+                if (m_publishedDownloads.contains(path)) continue;
                 const QFileInfo file(path);
                 valid &= file.isFile() && file.size() > 0 && file.suffix().compare(j.format, Qt::CaseInsensitive) == 0;
             }
@@ -474,11 +502,17 @@ void Runner::consume(bool final)
         if (line.contains("Could not create temporary directory", Qt::CaseInsensitive))
             m_temporaryFailure = true;
         auto &j = m_model->jobs[m_row];
+        if (j.kind == Source::Spotify) queueSpotifySong(line);
         if (line.startsWith("CONVERT_FILE:")) {
             const auto values = QJsonDocument::fromJson(("[" + line.mid(13) + "]").toUtf8()).array();
             if (!values.isEmpty() && values.first().isString()) {
                 const auto path = values.first().toString();
-                if (!m_downloadFiles.contains(path)) m_downloadFiles << path;
+                if (!m_downloadFiles.contains(path)) {
+                    m_downloadFiles << path;
+                    j.detail = QStringLiteral("Descargado en temporal: ") + QFileInfo(path).fileName();
+                    emit log(j.detail);
+                    m_model->refresh(m_row);
+                }
             }
         } else if (line.startsWith("out_time_us=") && m_duration > 0) {
             j.progress = qBound(0, int(line.mid(12).toDouble() / (m_duration * 10000.0)), 99);
@@ -496,14 +530,61 @@ void Runner::consume(bool final)
     }
 }
 
-void Runner::publishDownloads()
+void Runner::queueSpotifySong(const QString &line)
 {
-    struct CopyResult { QStringList saved; QString error; };
+    if (m_cancelled || !m_publicationError.isEmpty() || !m_downloadTemp) return;
+    // spotDL emits Downloaded only after conversion and metadata embedding.
+    const auto match = QRegularExpression("^Downloaded \"(.*)\": https?://").match(line);
+    if (!match.hasMatch()) return;
+    QString name = match.captured(1);
+    name.remove(QRegularExpression("[/\\\\?*|<>]"));
+    name.replace(QRegularExpression("\\s{2,}"), " ");
+    name.replace('"', '\'');
+    name.replace(':', '-');
+    const auto &job = m_model->jobs[m_row];
+    QStringList matches;
+    for (const auto &file : QDir(m_downloadTemp->path()).entryInfoList({"*." + job.format}, QDir::Files)) {
+        if (file.size() <= 0 || !QRegularExpression("^[A-Za-z0-9]{22} - ").match(file.fileName()).hasMatch()) continue;
+        if (file.completeBaseName().mid(25) == name) matches << file.absoluteFilePath();
+    }
+    // Ambiguous or truncated names are verified against the final metadata;
+    // never guess which file has finished while another may still be written.
+    if (matches.size() != 1 || m_spotifyQueued.contains(matches.first())) return;
+    m_spotifyQueued.insert(matches.first());
+    m_spotifyCopyQueue << matches.first();
+    copyNextSpotifySong();
+}
+
+void Runner::copyNextSpotifySong()
+{
+    if (m_spotifyCopyActive) return;
+    if (!m_cancelled && m_publicationError.isEmpty() && !m_spotifyCopyQueue.isEmpty()) {
+        publishDownloads({m_spotifyCopyQueue.takeFirst()}, false);
+        return;
+    }
+    if (m_spotifyFinishPending) complete(m_spotifyFinalSuccess, m_spotifyFinalMessage);
+}
+
+void Runner::publishDownloads(const QStringList &requested, bool finalBatch)
+{
+    if (finalBatch && m_model->jobs[m_row].kind == Source::Spotify) {
+        // Final validation may also find completed files whose log was wrapped
+        // or whose filename was shortened by spotDL. Queue only unseen paths.
+        for (const auto &path : m_downloadFiles) {
+            if (m_spotifyQueued.contains(path)) continue;
+            m_spotifyQueued.insert(path);
+            m_spotifyCopyQueue << path;
+        }
+        complete(true, "Finalizado.");
+        return;
+    }
+    struct CopyResult { QMap<QString, QString> copies; QString error; };
     const auto result = std::make_shared<CopyResult>();
     const auto cancelled = std::make_shared<std::atomic_bool>(m_cancelled);
     m_copyCancelled = cancelled;
     const auto job = m_model->jobs[m_row];
-    const auto files = m_downloadFiles;
+    const auto files = finalBatch ? m_downloadFiles : requested;
+    if (!finalBatch) m_spotifyCopyActive = true;
     emit log("Guardando descarga en: " + QDir::toNativeSeparators(job.destination));
     m_model->jobs[m_row].progress = -1;
     m_model->refresh(m_row);
@@ -539,6 +620,7 @@ void Runner::publishDownloads()
             output.setFileName(target);
         }
         QByteArray buffer(1024 * 1024, Qt::Uninitialized);
+        QCryptographicHash sourceHash(QCryptographicHash::Sha256);
         qint64 total = 0;
         bool ok = true;
         while (!cancelled->load()) {
@@ -552,6 +634,7 @@ void Runner::publishDownloads()
                 written += amount;
             }
             if (!ok) break;
+            sourceHash.addData(QByteArrayView(buffer.constData(), count));
             total += count;
         }
         if (ok && !output.flush()) { result->error = output.errorString(); ok = false; }
@@ -560,18 +643,74 @@ void Runner::publishDownloads()
             result->error = "El archivo guardado tiene un tamaño incompleto."; ok = false;
         }
         output.close();
+        // Read back the destination before deleting the local download,
+        // including when the destination is on an SMB share.
+        if (ok) {
+            QFile verification(target);
+            QCryptographicHash targetHash(QCryptographicHash::Sha256);
+            if (!verification.open(QIODevice::ReadOnly)) {
+                result->error = verification.errorString(); ok = false;
+            } else {
+                while (ok && !cancelled->load()) {
+                    const auto count = verification.read(buffer.data(), buffer.size());
+                    if (count < 0) { result->error = verification.errorString(); ok = false; break; }
+                    if (count == 0) break;
+                    targetHash.addData(QByteArrayView(buffer.constData(), count));
+                }
+                if (ok && (verification.size() != total || targetHash.result() != sourceHash.result())) {
+                    result->error = "La copia no coincide con la descarga local."; ok = false;
+                }
+            }
+            if (cancelled->load()) { result->error = "Cancelado por el usuario."; ok = false; }
+        }
         if (!ok) {
             result->error = "No se pudo guardar " + QDir::toNativeSeparators(target) + ": " + result->error;
             if (!output.remove()) result->error += "\nNo se pudo borrar el archivo incompleto: " + target;
             return;
         }
-        result->saved << target;
+        result->copies.insert(path, target);
       }
     });
-    connect(thread, &QThread::finished, this, [this, result] {
+    connect(thread, &QThread::finished, this, [this, result, finalBatch] {
         m_copyCancelled.reset();
-        for (const auto &path : result->saved) emit log("Guardado: " + QDir::toNativeSeparators(path));
-        complete(result->error.isEmpty(), result->error.isEmpty() ? "Finalizado." : result->error);
+        // Record the completed copy before removing the source. Final playlist
+        // validation must also recognise songs already removed from staging.
+        for (auto it = result->copies.cbegin(); it != result->copies.cend(); ++it) {
+            m_publishedDownloads.insert(it.key(), it.value());
+            emit log("Guardado: " + QDir::toNativeSeparators(it.value()));
+            const QFileInfo source(it.key());
+            const QString root = m_downloadTemp ? QDir(m_downloadTemp->path()).canonicalPath() : QString();
+            const QString canonical = source.canonicalFilePath();
+#ifdef Q_OS_WIN
+            constexpr auto pathCase = Qt::CaseInsensitive;
+#else
+            constexpr auto pathCase = Qt::CaseSensitive;
+#endif
+            if (!root.isEmpty() && !source.isSymLink() && canonical.startsWith(root + '/', pathCase)) {
+                if (!QFile::remove(it.key()))
+                    emit log("Copia guardada; no se pudo borrar el temporal: " + QDir::toNativeSeparators(it.key()));
+                else
+                    emit log("Temporal eliminado: " + QDir::toNativeSeparators(it.key()));
+            }
+        }
+        if (finalBatch) {
+            complete(result->error.isEmpty(), result->error.isEmpty() ? "Finalizado." : result->error);
+            return;
+        }
+        m_spotifyCopyActive = false;
+        if (!result->error.isEmpty()) {
+            m_publicationError = result->error;
+            emit log(m_publicationError);
+            if (m_process) {
+                // Wait for finished before releasing this job's temporary files.
+                closeProcessTree();
+                m_process->kill();
+                return;
+            }
+            complete(false, m_publicationError);
+            return;
+        }
+        copyNextSpotifySong();
     });
     connect(thread, &QThread::finished, thread, &QObject::deleteLater);
     thread->start();
@@ -581,6 +720,16 @@ void Runner::complete(bool success, const QString &message)
 {
     if (m_row < 0 || m_row >= m_model->jobs.size()) return;
     auto &j = m_model->jobs[m_row];
+    if (j.kind == Source::Spotify && (m_spotifyCopyActive ||
+        (!m_cancelled && m_publicationError.isEmpty() && !m_spotifyCopyQueue.isEmpty()))) {
+        // A tool may finish (or fail) while a previous song is still copying.
+        // Keep the row and local files alive until that copy has completed.
+        m_spotifyFinishPending = true;
+        m_spotifyFinalSuccess = success;
+        m_spotifyFinalMessage = message;
+        copyNextSpotifySong();
+        return;
+    }
     const bool completed = success && !m_cancelled;
     QString detail = message;
     if (!completed && m_downloadTemp && m_downloadTemp->isValid() &&

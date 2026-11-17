@@ -20,7 +20,31 @@ ha copiado código del repositorio Spotify-Downloader ni de Radit.
   Se aplican a archivos locales y descargas de YouTube y Spotify. Las opciones
   de audio están desactivadas para salidas de vídeo.
 - Enlaces YouTube con yt-dlp, incluidos enlaces de listas.
+- El registro de YouTube muestra la extracción y el archivo terminado, con
+  salida de Python sin almacenamiento intermedio. Para salidas de audio de una
+  playlist, primero se descargan los archivos originales de toda la entrada y
+  después se convierten al formato elegido y se guardan en el destino. El
+  registro anuncia estas fases para distinguir la descarga de la conversión.
 - Canciones, álbumes y listas públicas de Spotify mediante **spotDL externo**.
+- Cada playlist ocupa una sola entrada. Pegar el enlace no consulta ni enumera
+  sus canciones; **Iniciar cola** lo envía directamente a la herramienta de
+  descarga con el formato y las opciones elegidos. No hay contador de canciones,
+  expansión en filas ni límite de tres minutos para consultar la playlist.
+  Spotify procesa las canciones de una en una. Cuando confirma una canción
+  terminada, Convert la copia en segundo plano a la salida con el nombre
+  `Artista - Título.ext`, sin identificador. Si existe, añade ` (2)`, etc.
+  Las canciones ya copiadas permanecen en el destino aunque falle otra posterior.
+  Cada copia se comprueba leyendo el destino y comparando su SHA-256 con el
+  contenido de origen; entonces se borra su archivo temporal local. Si la copia
+  o su verificación fallan, se conserva el original temporal. Si el borrado no
+  es posible, se avisa en el registro sin volver a copiar la canción.
+  Si todas se verifican y guardan, se retira la entrada; si falla alguna, queda
+  con error y se conserva la descarga parcial local. El registro muestra las
+  rutas. Si el nombre de una notificación no permite identificar un archivo de
+  forma inequívoca, su copia se pospone a la verificación final.
+- Las filas se numeran desde 1. La barra inferior muestra entradas actuales,
+  pendientes, completadas, errores y el total de la sesión (actuales más
+  completadas). Una playlist cuenta como una entrada, no como sus canciones.
 - Archivos locales: salida en la carpeta de origen de cada archivo.
 - Enlaces: salida en la carpeta de descargas seleccionada.
 - Formato individual: pulsar la celda **Formato** de una fila y elegir en su
@@ -30,6 +54,9 @@ ha copiado código del repositorio Spotify-Downloader ni de Radit.
   audio y la carpeta **Salida URL**
   a todas las entradas seleccionadas, incluidos los archivos locales.
 - Cola secuencial, progreso, registro, cancelación, reintento y apertura del destino.
+- **Borrar registro**, encima del log o en su menú del botón derecho, vacía el
+  texto mostrado. Puede usarse durante una descarga o conversión; los mensajes
+  posteriores continúan apareciendo y la cola y los archivos no se modifican.
 - Preferencias de herramientas y restauración opcional de la cola entre sesiones.
 - Los trabajos completados correctamente se retiran automáticamente de la lista.
   El resultado permanece en disco y su ubicación queda en el registro.
@@ -116,7 +143,7 @@ solicitado ahora utiliza `convert.pro` y no depende de CMake ni de JOM.
 
 En Windows, la compilación ejecuta `prepare-runtime.ps1` para restablecer la
 integridad **media**, que es el nivel normal del usuario, en `convert.exe` y los
-ejecutables de `bin/`, `ffmpeg/` y `tools/`. Esto evita que una etiqueta de
+ejecutables de `tools/` (y las carpetas antiguas `bin/` y `ffmpeg/`). Esto evita que una etiqueta de
 integridad baja heredada de la carpeta de compilación haga arrancar Convert o
 sus herramientas sin permiso para escribir en carpetas de música normales.
 También establece ese nivel en `out/bin` y las carpetas de herramientas para
@@ -139,14 +166,17 @@ Instalar por separado desde sus proyectos oficiales:
 
 | Herramienta | Uso | Ubicación automática junto al ejecutable |
 | --- | --- | --- |
-| [FFmpeg](https://ffmpeg.org/download.html) | Conversión y posprocesamiento | `bin/ffmpeg.exe` |
-| ffprobe (misma distribución FFmpeg) | Duración y progreso de conversión | `bin/ffprobe.exe` |
-| [yt-dlp](https://github.com/yt-dlp/yt-dlp#installation) | Descargas YouTube | `bin/yt-dlp.exe` |
-| [spotDL](https://spotdl.readthedocs.io/en/latest/installation/) | Enlaces Spotify | `bin/spotdl.exe` |
+| [FFmpeg](https://ffmpeg.org/download.html) | Conversión y posprocesamiento | `tools/ffmpeg.exe` |
+| ffprobe (misma distribución FFmpeg) | Duración y progreso de conversión | `tools/ffprobe.exe` |
+| [yt-dlp](https://github.com/yt-dlp/yt-dlp#installation) | Descargas YouTube | `tools/yt-dlp.exe` |
+| [spotDL](https://spotdl.readthedocs.io/en/latest/installation/) | Enlaces Spotify | `tools/spotdl.exe` |
+| [Deno](https://github.com/denoland/deno/releases) | Motor JavaScript para YouTube | `tools/deno.exe` |
 
-La primera ubicación automática es `bin/` junto a `convert.exe`: en este proyecto,
-`C:/Users/victo/Desktop/proyectos qt/convert/out/bin/bin/`.
-Después se buscan en `ffmpeg/`, `tools/`, en la carpeta del ejecutable y en PATH.
+La primera ubicación automática es `tools/` junto a `convert.exe`: en este proyecto,
+`C:/Users/victo/Desktop/proyectos qt/convert/out/bin/tools/`.
+Después se buscan en las carpetas antiguas `bin/` y `ffmpeg/`, en la carpeta del
+ejecutable y en PATH. Si una preferencia apuntaba al antiguo `bin/` de este
+ejecutable y el archivo ya no está allí, se actualiza a `tools/` si existe.
 **Preferencias** permite seleccionar rutas absolutas que tienen prioridad sobre
 la búsqueda automática; deja el campo vacío para utilizarla.
 Si instalas spotDL con Python, selecciona el
@@ -157,10 +187,15 @@ FLAC, libopus y libvorbis según el formato elegido. La aplicación muestra
 el error de la herramienta si falta un codificador.
 
 Para el soporte completo de YouTube, las versiones recientes de yt-dlp utilizan
-yt-dlp-ejs y un runtime JavaScript compatible, preferiblemente Deno. Sigue la
-[documentación de dependencias de yt-dlp](https://github.com/yt-dlp/yt-dlp#dependencies)
-y asegúrate de que Deno esté en PATH antes de iniciar Convert. Los ejecutables
-oficiales de yt-dlp ya incluyen los componentes EJS correspondientes.
+yt-dlp-ejs y un runtime JavaScript compatible. Convert detecta `deno.exe` en las
+mismas carpetas de herramientas o mediante **Preferencias > deno** y pasa su ruta
+explícitamente tanto a yt-dlp como a spotDL. También incorpora esa carpeta al
+PATH de sus procesos hijos. Utilizar Deno 2.3 o posterior; el entorno local incluye
+Deno 2.9.8 de su distribución oficial para Windows x64, con licencia en
+`tools/deno-LICENSE.md`. Al distribuir Convert, conservar también ese ejecutable
+y su licencia en la carpeta `tools`. Los ejecutables oficiales de yt-dlp ya incluyen
+los componentes EJS correspondientes. Referencia:
+[guía EJS de yt-dlp](https://github.com/yt-dlp/yt-dlp/wiki/EJS).
 
 Spotify se integra como en la idea del
 [repositorio de referencia](https://github.com/WilliamSchack/Spotify-Downloader):
@@ -194,7 +229,10 @@ en el servidor de salida. Los identificadores solo aparecen en esos nombres
 internos. Tras validar la salida se copian los archivos al destino con el
 nombre limpio, en segundo plano y sin sobrescribir archivos existentes. La copia
 puede cancelarse; si falla, el registro muestra la causa y se conserva la descarga
-local. Las copias terminadas permanecen en el destino; se intenta eliminar la
+local. En Spotify, la copia comienza con cada notificación de canción completada,
+sin esperar al final de toda la playlist. Si falla la escritura en el destino,
+se detiene spotDL y se conservan los archivos locales para su recuperación.
+Las copias terminadas permanecen en el destino; se intenta eliminar la
 copia incompleta. Si la descarga falla o se cancela, los archivos parciales se
 conservan en esa carpeta de trabajo y el registro muestra su ruta. Reintentar
 inicia una descarga nueva. No se renombran archivos ni se mueven las subcarpetas
@@ -217,13 +255,23 @@ La ventana principal, preferencias, menús, tabla y registro siguen esa paleta.
 **Ayuda > Acerca de Convert** abre un diálogo propio con tres columnas, logotipo
 central, versión, autor y créditos de las herramientas, con el estilo de Radit.
 
-El icono es una **C** inclinada con acabado azul grisáceo y bandas diagonales.
+El icono es una **C** recta, gruesa y redondeada, siguiendo la letra de la
+captura de referencia, con el acabado azul grisáceo y las bandas diagonales
+de la identidad actual.
 Se incluye en la ventana, el encabezado, Acerca de y los recursos del ejecutable
 Windows. Sus fuentes están en `svn/convert.svg`; `svn/convert.png` y
 `svn/convert.ico` se incluyen para su uso sin dependencias SVG adicionales.
 El ICO incluye tamaños de 16 a 256 píxeles y el PNG tiene 512 píxeles.
-Para regenerar los recursos en Windows se puede ejecutar `./generate-icon.ps1`;
-este script genera imágenes, no compila ni ejecuta la aplicación.
+Al arrancar se muestra una pantalla de inicio basada en la composición de Radit:
+fondo oscuro, C grande, nombre blanco, líneas cian, versión y autor. Su imagen
+está en `svn/splashscreen.png` a doble resolución (1000 × 572) y se presenta a
+500 × 286 puntos, con un breve intervalo de lectura sin bloquear el bucle de
+eventos. La versión se dibuja en tiempo de ejecución.
+Para regenerar icono, PNG y pantalla de inicio en Windows se puede ejecutar
+`./generate-icon.ps1`; utiliza System.Drawing y Arial Rounded MT Bold para el
+nombre del splash. La aplicación usa las imágenes ya generadas y no requiere
+esa fuente para mostrarlas. Este script genera imágenes, no compila ni ejecuta
+la aplicación.
 
 Después de incorporar estos archivos, ejecutar **qmake** en Qt Creator antes
 de compilar para actualizar fuentes y el icono del ejecutable.
@@ -257,6 +305,61 @@ No se modifica `C:/Users/<usuario>/.spotdl` ni los permisos del perfil de Window
 La redirección es necesaria incluso con `--no-cache`, porque spotDL crea su
 carpeta al importar los módulos, antes de leer las opciones de la línea de comandos.
 
+## Actualizaciones de Convert y herramientas
+
+**Ayuda → Actualizaciones** muestra la versión instalada, la disponible y el
+estado de Convert, FFmpeg/ffprobe/ffplay, yt-dlp, spotDL y Deno. Por defecto se
+consulta al arrancar, como máximo una vez al día, y aparece un aviso en la barra
+inferior cuando hay novedades. También se puede comprobar manualmente y
+desactivar la consulta automática. La descarga e instalación empiezan al pulsar
+**Actualizar** sobre el componente elegido; no se actualiza mientras la cola
+esté trabajando.
+
+Se consultan las Releases públicas de `valgaba/convert`, `GyanD/codexffmpeg`,
+`yt-dlp/yt-dlp`, `spotDL/spotify-downloader` y `denoland/deno`. Se seleccionan
+paquetes para Windows x64 y versiones estables; las preliminares de Convert se
+pueden habilitar aparte. FFmpeg, ffprobe y ffplay se actualizan juntos. Se exige
+el SHA-256 publicado por GitHub y se comprueba antes de instalar. Si no puede
+leerse una versión o falta una publicación compatible/verificable, el diálogo
+indica el problema y no sustituye ese componente.
+
+Las herramientas nuevas se instalan en `tools/` y quedan seleccionadas en
+Preferencias. Si se había elegido una ruta externa, su ejecutable se conserva.
+Convert prepara el paquete antes de cerrarse, conserva la cola pendiente durante
+el reinicio y vuelve a abrirse al terminar. La actualización de Convert conserva
+las herramientas instaladas, las preferencias y los destinos de audio/vídeo.
+Hace falta permiso de escritura en la carpeta de instalación.
+
+El instalador guarda los archivos sustituidos en `.update-backup/<identificador>`
+y, si falla la sustitución, intenta restaurarlos. El resultado se registra y, en
+el caso de Convert, se muestra al abrirse de nuevo. Los paquetes y diagnósticos
+quedan en la carpeta `updates` de la caché local de Convert; las copias anteriores
+se conservan para recuperación manual. La sustitución final no se puede cancelar;
+sí la descarga y la preparación del reinicio.
+
+### Preparar una versión detectable
+
+La versión común de qmake y CMake se lee de `app-version.txt`. Se utiliza este
+nombre para evitar conflictos con la cabecera estándar de C++ `<version>` en
+Windows. Para una nueva publicación:
+
+1. Cambiar `app-version.txt` a un número mayor, con formato `mayor.menor.parche`.
+2. Compilar y desplegar con `./build.ps1 -Deploy`, y validar la aplicación.
+3. Preparar `out/bin/licenses/` con las licencias y avisos correspondientes a Qt,
+   sus dependencias y las herramientas incluidas. También puede indicarse otra
+   carpeta mediante `-LicenseDirectory`.
+4. Ejecutar `./package-release.ps1`. Genera una carpeta exclusiva en `out/releases`
+   con `convert-<versión>-windows-x64.zip` y `SHA256SUMS.txt`, sin datos personales,
+   cola, temporales ni copias de actualizaciones anteriores.
+5. Publicar ambos archivos como assets de la Release `v<versión>` del repositorio.
+   Una Release marcada como preliminar solo se ofrece si está habilitado ese canal.
+
+El script de empaquetado no compila ni publica. No debe sustituirse una descarga
+existente manteniendo su versión para ofrecer una actualización: el comparador
+requiere una versión mayor. Las distribuciones anteriores a este gestor necesitan
+una primera actualización manual para incorporarlo. Este cambio no genera ni
+publica una Release por sí solo.
+
 ## Verificación pendiente por el usuario
 
 Siguiendo `../AGENTS.md`, el agente no ha compilado ni ejecutado pruebas.
@@ -288,6 +391,11 @@ Esta versión requiere validación antes de distribuirse:
     el siguiente sin saltarse entradas. Los fallidos y cancelados deben permanecer.
 12. Descargar dos canciones o vídeos con el mismo nombre: las salidas deben llevar
     nombres sin identificador y sufijos numéricos, conservando todos los archivos.
+13. Abrir **Ayuda → Actualizaciones**, comprobar versiones y avisos sin conexión.
+    Validar en una copia de la instalación la actualización de una herramienta,
+    la cancelación de una descarga y el reinicio de Convert con una cola pendiente.
+    Revisar la copia anterior y la recuperación ante un paquete incompleto o un
+    destino sin permisos antes de distribuir el gestor.
 
 Se ha preparado el proyecto para Windows. No se ha validado en Linux; la
 cancelación de árboles de procesos está implementada específicamente para Windows.

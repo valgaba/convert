@@ -1,8 +1,9 @@
-QT += core gui widgets
+QT += core gui widgets network
 
 TEMPLATE = app
 TARGET = convert
-VERSION = 0.1.0
+VERSION = $$cat($$PWD/app-version.txt, lines)
+DEFINES += CONVERT_VERSION=\\\"$$VERSION\\\"
 
 CONFIG += c++17 warn_on
 CONFIG -= debug_and_release console app_bundle
@@ -17,12 +18,14 @@ SOURCES += \
     svn/jobs.cpp \
     svn/runner.cpp
 SOURCES += svn/aboutdialog.cpp
+SOURCES += svn/updates.cpp
 
 HEADERS += \
     svn/mainwindow.h \
     svn/jobs.h \
     svn/runner.h
 HEADERS += svn/aboutdialog.h
+HEADERS += svn/updates.h
 
 RESOURCES += svn/resources.qrc
 
@@ -43,4 +46,6 @@ DISTFILES += \
     README.md \
     build.ps1
 DISTFILES += svn/convert.svg svn/convert.png generate-icon.ps1 svn/convert.rc
+DISTFILES += svn/splashscreen.png
 DISTFILES += prepare-runtime.ps1
+DISTFILES += app-version.txt svn/update-install.ps1 package-release.ps1

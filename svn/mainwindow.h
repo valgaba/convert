@@ -1,5 +1,6 @@
 #pragma once
 #include <QMainWindow>
+#include <QPointer>
 #include "jobs.h"
 #include "runner.h"
 
@@ -15,6 +16,8 @@ class QAction;
 class QDragEnterEvent;
 class QDropEvent;
 class QCloseEvent;
+class UpdateManager;
+class UpdateDialog;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -33,6 +36,8 @@ private:
     void changeSelectedDestination();
     void changeSelectedAudio();
     void preferences();
+    void showUpdates();
+    bool queueBusy() const;
     void setBusy(bool busy);
     void updateSummary();
     void saveQueue();
@@ -53,4 +58,9 @@ private:
     QList<QWidget *> m_controls;
     QAction *m_preferences, *m_paste;
     bool m_closeAfterCancel = false;
+    bool m_updateInstalling = false, m_restartForUpdate = false;
+    UpdateManager *m_updates;
+    QAction *m_updateAction;
+    QPushButton *m_updateNotice;
+    QPointer<UpdateDialog> m_updateDialog;
 };

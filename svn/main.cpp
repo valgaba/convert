@@ -4,13 +4,17 @@
 #include <QIcon>
 #include <QPalette>
 #include <QStyleFactory>
+#include <QSplashScreen>
+#include <QElapsedTimer>
+#include <QPainter>
+#include <QTimer>
 
 int main(int argc, char *argv[])
 {
     QApplication app(argc, argv);
     app.setOrganizationName("RaditTools");
     app.setApplicationName("Convert");
-    app.setApplicationVersion("0.1.0");
+    app.setApplicationVersion(QStringLiteral(CONVERT_VERSION));
     app.setWindowIcon(QIcon(":/convert.png"));
     app.setStyle(QStyleFactory::create("Fusion"));
     QPalette palette;
@@ -28,7 +32,32 @@ int main(int argc, char *argv[])
     app.setPalette(palette);
     QFile style(":/convert.qss");
     if (style.open(QIODevice::ReadOnly)) app.setStyleSheet(QString::fromUtf8(style.readAll()));
+    QPixmap artwork(":/splashscreen.png");
+    // The artwork is generated at twice its logical size for high-DPI screens.
+    artwork.setDevicePixelRatio(2.0);
+    if (!artwork.isNull()) {
+        QPainter painter(&artwork);
+        painter.setFont(QFont("Segoe UI", 9));
+        painter.setPen(QColor("#dfdbd2"));
+        painter.drawText(QRect(24, 251, 452, 22), Qt::AlignRight | Qt::AlignVCenter,
+                         QStringLiteral("%1 · Victor Algaba · Convert").arg(app.applicationVersion()));
+    }
+    QSplashScreen splash(artwork);
+    QElapsedTimer startup;
+    startup.start();
+    if (!artwork.isNull()) {
+        splash.setWindowTitle("Iniciando Convert");
+        splash.setWindowIcon(app.windowIcon());
+        splash.setCursor(Qt::WaitCursor);
+        splash.show();
+        app.processEvents();
+    }
     MainWindow window;
-    window.show();
+    // Keep the splash legible briefly without sleeping or blocking the event loop.
+    const int delay = artwork.isNull() ? 0 : int(qMax<qint64>(0, 900 - startup.elapsed()));
+    QTimer::singleShot(delay, &window, [&window, &splash] {
+        window.show();
+        splash.finish(&window);
+    });
     return app.exec();
 }

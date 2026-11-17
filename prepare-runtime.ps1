@@ -16,7 +16,7 @@ $executables = @(Get-Item -LiteralPath $applicationPath)
 # Set the directory's inherited label as well: the linker replaces the EXE
 # on each build, and the replacement otherwise inherits the low folder label.
 $runtimeFolders = @((Get-Item -LiteralPath $runtimePath))
-foreach ($name in @('bin', 'ffmpeg', 'tools')) {
+foreach ($name in @('tools', 'bin', 'ffmpeg')) {
     $folder = Join-Path $runtimePath $name
     if (-not (Test-Path -LiteralPath $folder -PathType Container)) { continue }
     if ((Get-Item -LiteralPath $folder).Attributes -band [IO.FileAttributes]::ReparsePoint) { continue }

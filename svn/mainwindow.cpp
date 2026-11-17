@@ -1,5 +1,6 @@
 #include "mainwindow.h"
 #include "aboutdialog.h"
+#include "updates.h"
 #include <QAction>
 #include <QApplication>
 #include <QClipboard>
@@ -36,6 +37,7 @@
 #include <QStatusBar>
 #include <QStyledItemDelegate>
 #include <QTableView>
+#include <QTextDocument>
 #include <QTimer>
 #include <QUrl>
 #include <QVBoxLayout>
@@ -161,6 +163,7 @@ MainWindow::MainWindow()
     setAcceptDrops(true);
     m_model = new JobModel(this);
     m_runner = new Runner(m_model, this);
+    m_updates = new UpdateManager([this] { return m_runner->busy(); }, this);
 
     auto *fileMenu = menuBar()->addMenu("&Archivo");
     m_paste = new QAction("Pegar en la lista", this);
@@ -171,6 +174,8 @@ MainWindow::MainWindow()
     fileMenu->addAction("Salir", QKeySequence::Quit, this, &QWidget::close);
     m_preferences = menuBar()->addAction("Preferencias…", this, &MainWindow::preferences);
     auto *helpMenu = menuBar()->addMenu("Ayuda");
+    m_updateAction = helpMenu->addAction("Actualizaciones…", this, &MainWindow::showUpdates);
+    helpMenu->addSeparator();
     helpMenu->addAction("Acerca de Convert", this, [this] {
         AboutDialog dialog(this);
         dialog.exec();
@@ -266,7 +271,8 @@ MainWindow::MainWindow()
     m_table->setToolTip("Arrastra archivos o pulsa Ctrl+V para pegar enlaces. También puedes usar el menú del botón derecho.");
     m_table->addAction(m_paste);
     m_table->setContextMenuPolicy(Qt::CustomContextMenu);
-    m_table->verticalHeader()->hide();
+    m_table->verticalHeader()->show();
+    m_table->verticalHeader()->setMinimumWidth(36);
     m_table->verticalHeader()->setDefaultSectionSize(34);
     m_table->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
     m_table->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
@@ -287,7 +293,38 @@ MainWindow::MainWindow()
     m_log->setReadOnly(true);
     m_log->setMaximumBlockCount(1800);
     m_log->setPlaceholderText("Registro de actividad. Los errores de las herramientas aparecerán aquí.");
-    splitter->addWidget(m_log);
+    auto *logPanel = new QWidget;
+    auto *logLayout = new QVBoxLayout(logPanel);
+    logLayout->setContentsMargins(0, 0, 0, 0);
+    logLayout->setSpacing(4);
+    auto *logHeader = new QHBoxLayout;
+    auto *logTitle = new QLabel("Registro de actividad");
+    logTitle->setObjectName("PanelTitle");
+    auto *clearLogButton = new QPushButton("Borrar registro");
+    clearLogButton->setToolTip("Vacía el registro mostrado. Los nuevos mensajes seguirán apareciendo.");
+    auto *clearLog = new QAction("Borrar registro", m_log);
+    clearLog->setEnabled(false);
+    clearLogButton->setEnabled(false);
+    connect(clearLog, &QAction::triggered, m_log, &QPlainTextEdit::clear);
+    connect(clearLogButton, &QPushButton::clicked, clearLog, &QAction::trigger);
+    connect(m_log, &QPlainTextEdit::textChanged, this, [this, clearLog, clearLogButton] {
+        const bool hasText = !m_log->document()->isEmpty();
+        clearLog->setEnabled(hasText);
+        clearLogButton->setEnabled(hasText);
+    });
+    m_log->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(m_log, &QWidget::customContextMenuRequested, this, [this, clearLog](const QPoint &position) {
+        auto *menu = m_log->createStandardContextMenu();
+        menu->addSeparator();
+        menu->addAction(clearLog);
+        menu->exec(m_log->mapToGlobal(position));
+        delete menu;
+    });
+    logHeader->addWidget(logTitle, 1);
+    logHeader->addWidget(clearLogButton);
+    logLayout->addLayout(logHeader);
+    logLayout->addWidget(m_log, 1);
+    splitter->addWidget(logPanel);
     splitter->setStretchFactor(0, 4);
     splitter->setStretchFactor(1, 1);
     splitter->setSizes({400, 100});
@@ -311,6 +348,10 @@ MainWindow::MainWindow()
     m_progress->setMaximumWidth(220);
     statusBar()->addWidget(m_summary, 1);
     statusBar()->addPermanentWidget(m_progress);
+    m_updateNotice = new QPushButton("Actualizaciones");
+    m_updateNotice->setVisible(false);
+    statusBar()->addPermanentWidget(m_updateNotice);
+    connect(m_updateNotice, &QPushButton::clicked, this, &MainWindow::showUpdates);
     setCentralWidget(central);
     m_controls = {outputBox, remove, retry};
     connect(m_paste, &QAction::triggered, this, &MainWindow::pasteFromClipboard);
@@ -324,17 +365,17 @@ MainWindow::MainWindow()
         const auto rows = selectedRows();
         bool audioSelection = !rows.isEmpty();
         for (int row : rows) audioSelection &= isAudio(m_model->jobs[row].format);
-        audioOptions->setEnabled(!m_runner->busy() && audioSelection);
+        audioOptions->setEnabled(!queueBusy() && audioSelection);
         connect(audioOptions, &QAction::triggered, this, &MainWindow::changeSelectedAudio);
         auto *changeDestination = menu.addAction("Cambiar carpeta de salida…");
-        changeDestination->setEnabled(!m_runner->busy() && !selectedRows().isEmpty());
+        changeDestination->setEnabled(!queueBusy() && !selectedRows().isEmpty());
         connect(changeDestination, &QAction::triggered, this, &MainWindow::changeSelectedDestination);
         menu.addSeparator();
         auto *clearList = menu.addAction("Borrar lista");
         clearList->setToolTip("Quita todas las entradas de la cola. Conserva los archivos del disco.");
-        clearList->setEnabled(!m_runner->busy() && m_model->rowCount() > 0);
+        clearList->setEnabled(!queueBusy() && m_model->rowCount() > 0);
         connect(clearList, &QAction::triggered, this, [this] {
-            if (m_runner->busy()) return;
+            if (queueBusy()) return;
             m_model->clear();
             saveQueue();
             m_table->setFocus();
@@ -347,7 +388,7 @@ MainWindow::MainWindow()
     });
     connect(apply, &QPushButton::clicked, this, [this] {
         const auto rows = selectedRows();
-        if (m_runner->busy() || rows.isEmpty()) return;
+        if (queueBusy() || rows.isEmpty()) return;
         for (int row : rows) {
             const auto &j = m_model->jobs[row];
             if (j.state == State::Done) continue;
@@ -402,6 +443,27 @@ MainWindow::MainWindow()
     connect(m_runner, &Runner::busyChanged, this, &MainWindow::setBusy);
     connect(m_runner, &Runner::checkpoint, this, &MainWindow::saveQueue);
     connect(m_runner, &Runner::log, m_log, &QPlainTextEdit::appendPlainText);
+    connect(m_updates, &UpdateManager::log, m_log, &QPlainTextEdit::appendPlainText);
+    connect(m_updates, &UpdateManager::installationReport, this, [this](const QString &message, bool failed) {
+        if (failed) QMessageBox::warning(this, "Actualización de Convert", message);
+        else statusBar()->showMessage(message, 15000);
+    });
+    connect(m_updates, &UpdateManager::available, this, [this](int count) {
+        m_updateNotice->setVisible(count > 0);
+        m_updateNotice->setText(QStringLiteral("Actualizaciones (%1)").arg(count));
+        m_updateAction->setText(count > 0 ? QStringLiteral("Actualizaciones (%1 disponibles)…").arg(count)
+                                       : QStringLiteral("Actualizaciones…"));
+    });
+    connect(m_updates, &UpdateManager::installationChanged, this, [this](bool active) {
+        m_updateInstalling = active;
+        setBusy(m_runner->busy());
+    });
+    connect(m_updates, &UpdateManager::restartReady, this, [this] {
+        m_restartForUpdate = true;
+        QSettings().setValue("session/restoreAfterUpdate", true);
+        saveQueue();
+        close();
+    });
     connect(m_model, &QAbstractItemModel::dataChanged, this, &MainWindow::updateSummary);
     connect(m_model, &QAbstractItemModel::dataChanged, this,
             [this](const QModelIndex &, const QModelIndex &, const QList<int> &roles) {
@@ -415,6 +477,25 @@ MainWindow::MainWindow()
     updatePasteAction();
     m_table->setFocus();
     m_log->appendPlainText("Preparado. Arrastra archivos a la lista o pega enlaces con Ctrl+V.");
+    QTimer::singleShot(3000, m_updates, &UpdateManager::checkAutomatically);
+}
+
+bool MainWindow::queueBusy() const
+{
+    return m_runner->busy() || m_updateInstalling;
+}
+
+void MainWindow::showUpdates()
+{
+    if (!m_updateDialog) {
+        m_updateDialog = new UpdateDialog(m_updates, this);
+        m_updateDialog->setAttribute(Qt::WA_DeleteOnClose);
+        m_updateDialog->setModal(true);
+    }
+    m_updateDialog->show();
+    m_updateDialog->raise();
+    m_updateDialog->activateWindow();
+    if (!m_updates->busy() && m_updates->items().first().status == QStringLiteral("Sin comprobar")) m_updates->check();
 }
 
 QList<int> MainWindow::selectedRows() const
@@ -426,7 +507,7 @@ QList<int> MainWindow::selectedRows() const
 
 void MainWindow::addFiles(const QStringList &files)
 {
-    if (m_runner->busy()) return;
+    if (queueBusy()) return;
     for (const auto &file : files) {
         const QFileInfo info(file);
         if (!info.isFile()) { m_log->appendPlainText("Omitido (no es un archivo): " + file); continue; }
@@ -458,7 +539,7 @@ bool MainWindow::addUrl(const QString &text, QString *error)
 
 void MainWindow::pasteFromClipboard()
 {
-    if (m_runner->busy()) return;
+    if (queueBusy()) return;
     const auto *data = QApplication::clipboard()->mimeData();
     if (data) handleDrop(data);
 }
@@ -466,12 +547,12 @@ void MainWindow::pasteFromClipboard()
 void MainWindow::updatePasteAction()
 {
     const auto *data = QApplication::clipboard()->mimeData();
-    m_paste->setEnabled(!m_runner->busy() && data && (data->hasUrls() || data->hasText()));
+    m_paste->setEnabled(!queueBusy() && data && (data->hasUrls() || data->hasText()));
 }
 
 void MainWindow::changeSelectedDestination()
 {
-    if (m_runner->busy()) return;
+    if (queueBusy()) return;
     const auto rows = selectedRows();
     if (rows.isEmpty()) return;
     const auto initial = m_model->jobs[rows.first()].destination;
@@ -492,7 +573,7 @@ void MainWindow::changeSelectedDestination()
 
 void MainWindow::changeSelectedAudio()
 {
-    if (m_runner->busy()) return;
+    if (queueBusy()) return;
     const auto rows = selectedRows();
     if (rows.isEmpty()) return;
     const auto format = m_model->jobs[rows.first()].format;
@@ -519,7 +600,7 @@ void MainWindow::changeSelectedAudio()
 
 void MainWindow::dragEnterEvent(QDragEnterEvent *event)
 {
-    if (!m_runner->busy() && (event->mimeData()->hasUrls() || event->mimeData()->hasText())) {
+    if (!queueBusy() && (event->mimeData()->hasUrls() || event->mimeData()->hasText())) {
         event->setDropAction(Qt::CopyAction);
         event->accept();
     }
@@ -527,7 +608,7 @@ void MainWindow::dragEnterEvent(QDragEnterEvent *event)
 
 void MainWindow::handleDrop(const QMimeData *data)
 {
-    if (m_runner->busy()) return;
+    if (queueBusy()) return;
     QStringList files, links, errors;
     if (data->hasUrls()) {
         for (const auto &url : data->urls()) {
@@ -543,7 +624,7 @@ void MainWindow::handleDrop(const QMimeData *data)
 
 void MainWindow::dropEvent(QDropEvent *event)
 {
-    if (m_runner->busy()) return;
+    if (queueBusy()) return;
     handleDrop(event->mimeData());
     event->setDropAction(Qt::CopyAction);
     event->accept();
@@ -556,7 +637,7 @@ bool MainWindow::eventFilter(QObject *object, QEvent *event)
             m_emptyHint->setGeometry(m_table->viewport()->rect());
         if (event->type() == QEvent::DragEnter || event->type() == QEvent::DragMove) {
             auto *drag = static_cast<QDragMoveEvent *>(event);
-            if (!m_runner->busy() && (drag->mimeData()->hasUrls() || drag->mimeData()->hasText())) {
+            if (!queueBusy() && (drag->mimeData()->hasUrls() || drag->mimeData()->hasText())) {
                 drag->setDropAction(Qt::CopyAction);
                 drag->accept();
             } else drag->ignore();
@@ -569,10 +650,11 @@ bool MainWindow::eventFilter(QObject *object, QEvent *event)
 
 void MainWindow::setBusy(bool busy)
 {
+    busy = busy || m_updateInstalling;
     m_model->setProcessing(busy);
     for (auto *control : m_controls) control->setEnabled(!busy);
     m_preferences->setEnabled(!busy);
-    m_stop->setEnabled(busy);
+    m_stop->setEnabled(m_runner->busy());
     updatePasteAction();
     saveQueue();
     updateSummary();
@@ -589,11 +671,11 @@ void MainWindow::updateSummary()
         failed += j.state == State::Failed;
         if (j.state == State::Running) current = j.progress;
     }
-    m_summary->setText(QString("%1 entradas  ·  %2 pendientes  ·  %3 completadas  ·  %4 errores")
-        .arg(m_model->jobs.size()).arg(pending).arg(done).arg(failed));
-    m_start->setEnabled(!m_runner->busy() && pending > 0);
+    m_summary->setText(QStringLiteral("%1 en lista · %2 pendientes · %3 completadas · %4 errores · %5 total")
+        .arg(m_model->jobs.size()).arg(pending).arg(done).arg(failed).arg(m_model->jobs.size() + done));
+    m_start->setEnabled(!queueBusy() && pending > 0);
     m_progress->setRange(0, current < 0 ? 0 : 100);
-    m_progress->setValue(m_runner->busy() ? qMax(0, current) : (done > 0 && pending == 0 ? 100 : 0));
+    m_progress->setValue(queueBusy() ? qMax(0, current) : (done > 0 && pending == 0 ? 100 : 0));
 }
 
 void MainWindow::preferences()
@@ -601,17 +683,19 @@ void MainWindow::preferences()
     QDialog dialog(this);
     dialog.setWindowTitle("Preferencias · Herramientas");
     auto *layout = new QVBoxLayout(&dialog);
-    auto *intro = new QLabel("Selecciona ejecutables o deja el campo vacío para buscar primero en la carpeta bin junto a Convert.\n"
-                            "Después se busca en ffmpeg, tools, junto al programa y en PATH.\n"
-                            "FFmpeg es obligatorio. ffprobe permite calcular el progreso de conversión.");
+    auto *intro = new QLabel("Selecciona ejecutables o deja el campo vacío para buscar primero en la carpeta tools junto a Convert.\n"
+                            "Después se busca en bin, ffmpeg, junto al programa y en PATH.\n"
+                            "FFmpeg es obligatorio. ffprobe permite calcular el progreso de conversión.\n"
+                            "Deno proporciona el motor JavaScript que necesita yt-dlp para YouTube.");
     intro->setWordWrap(true);
     layout->addWidget(intro);
     auto *form = new QFormLayout;
     QMap<QString, QLineEdit *> entries;
-    for (const auto &name : QStringList{"ffmpeg", "ffprobe", "yt-dlp", "spotdl"}) {
+    for (const auto &name : QStringList{"ffmpeg", "ffprobe", "yt-dlp", "spotdl", "deno"}) {
+        const auto detected = toolPath(name); // Also migrates an old local bin path.
         auto *row = new QHBoxLayout;
         auto *edit = new QLineEdit(QSettings().value("tools/" + name).toString());
-        edit->setPlaceholderText(toolPath(name).isEmpty() ? "No encontrado" : toolPath(name));
+        edit->setPlaceholderText(detected.isEmpty() ? "No encontrado" : detected);
         edit->setMinimumWidth(400);
         auto *browse = new QPushButton("Examinar…");
         row->addWidget(edit); row->addWidget(browse);
@@ -656,7 +740,7 @@ void MainWindow::saveQueue()
     s.setValue("output/format", m_format->currentText());
     s.setValue("output/directory", m_destination->text());
     writeAudio(s, "audio/", m_audio);
-    if (!s.value("session/rememberQueue", false).toBool()) {
+    if (!s.value("session/rememberQueue", false).toBool() && !s.value("session/restoreAfterUpdate", false).toBool()) {
         s.remove("queue");
         return;
     }
@@ -677,7 +761,7 @@ void MainWindow::saveQueue()
 void MainWindow::restoreQueue()
 {
     QSettings s;
-    if (!s.value("session/rememberQueue", false).toBool()) {
+    if (!s.value("session/rememberQueue", false).toBool() && !s.value("session/restoreAfterUpdate", false).toBool()) {
         s.remove("queue");
         return;
     }
@@ -706,10 +790,19 @@ void MainWindow::restoreQueue()
         m_model->append(j);
     }
     s.endArray();
+    if (s.value("session/restoreAfterUpdate", false).toBool()) {
+        s.setValue("session/restoreAfterUpdate", false);
+        if (!s.value("session/rememberQueue", false).toBool()) s.remove("queue");
+    }
 }
 
 void MainWindow::closeEvent(QCloseEvent *event)
 {
+    if (m_updateInstalling && !m_restartForUpdate) {
+        QMessageBox::information(this, "Actualización en curso", "Termina o cancela la actualización desde Ayuda > Actualizaciones antes de cerrar.");
+        event->ignore();
+        return;
+    }
     if (m_runner->busy()) {
         const auto answer = QMessageBox::question(this, "Trabajo en curso",
             "¿Detener la cola y cerrar? Las descargas parciales permanecerán en su carpeta.",
